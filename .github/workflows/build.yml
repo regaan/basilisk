@@ -36,14 +36,14 @@ jobs:
 
       - name: Install Extra Python Dependencies
         run: |
-          pip install uvicorn fastapi websockets aiohttp pyyaml click rich jinja2 litellm
+          pip install uvicorn fastapi websockets aiohttp pyyaml click rich jinja2 litellm jaraco.text jaraco.functools jaraco.context
         shell: bash
 
       - name: Install Linux Build Dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools
+          sudo apt-get install -y libarchive-tools imagemagick
 
       - name: Compile Python Sidecar
         run: |
@@ -71,7 +71,15 @@ jobs:
         working-directory: ./desktop
         run: |
           mkdir -p build
-          cp src/assets/logo.jpg build/icon.png || true
+          if command -v magick &> /dev/null; then
+            magick src/assets/logo.jpg -resize 512x512 build/icon.png
+          elif command -v convert &> /dev/null; then
+            convert src/assets/logo.jpg -resize 512x512 build/icon.png
+          elif command -v sips &> /dev/null; then
+            sips -s format png -Z 512 src/assets/logo.jpg --out build/icon.png
+          else
+            cp src/assets/logo.jpg build/icon.png
+          fi
         shell: bash
 
       - name: Copy License

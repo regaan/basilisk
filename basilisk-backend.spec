@@ -163,6 +163,15 @@ a = Analysis(
         'rich.panel',
         'rich.progress',
         'jinja2',
+
+        # ── pkg_resources / setuptools chain (jaraco crash fix) ──
+        'pkg_resources',
+        'jaraco',
+        'jaraco.text',
+        'jaraco.functools',
+        'jaraco.context',
+        'importlib_metadata',
+        'setuptools',
     ],
     hookspath=[],
     hooksconfig={},
@@ -171,12 +180,10 @@ a = Analysis(
         # Heavy dev/test deps not needed at runtime
         'tkinter',
         'matplotlib',
-        'numpy',
         'pandas',
         'scipy',
         'pytest',
         'pyinstaller',
-        'setuptools',
         'pip',
     ],
     noarchive=False,
