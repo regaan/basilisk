@@ -11,7 +11,7 @@ Health check endpoint.
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "timestamp": "2026-01-15T10:00:00Z"
 }
 ```
