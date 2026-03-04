@@ -2,15 +2,9 @@ name: Build and Push Docker Image
 
 on:
   workflow_dispatch:
-  # Paused — uncomment to enable auto-builds
-  # push:
-  #   branches:
-  #     - main
-  #   tags:
-  #     - 'v*'
-  # pull_request:
-  #   branches:
-  #     - main
+  push:
+    tags:
+      - 'v*'
 
 env:
   DOCKERHUB_REPO: rothackers/basilisk

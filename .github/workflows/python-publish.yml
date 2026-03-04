@@ -2,9 +2,8 @@ name: Upload Python Package
 
 on:
   workflow_dispatch:
-  # Paused — uncomment to enable auto-publish on release
-  # release:
-  #   types: [published]
+  release:
+    types: [published]
 
 permissions:
   contents: read
