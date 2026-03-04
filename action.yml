@@ -1,5 +1,5 @@
 name: 'Basilisk AI Security Scan'
-description: 'Run Basilisk AI/LLM red teaming scans in your CI/CD pipeline. Detects prompt injection, guardrail bypasses, and OWASP LLM Top 10 vulnerabilities.'
+description: 'AI/LLM red teaming for CI/CD. Detects prompt injection, guardrail bypasses, and OWASP LLM Top 10 vulns.'
 author: 'Regaan / Rot Hackers'
 
 branding:
