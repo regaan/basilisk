@@ -65,7 +65,7 @@ else
 fi
 
 # Copy license
-cp LICENSE desktop/LICENSE.txt 2>/dev/null || echo "MIT License" > desktop/LICENSE.txt
+cp LICENSE desktop/LICENSE.txt 2>/dev/null || echo "AGPL-3.0 License" > desktop/LICENSE.txt
 
 # Prepare icons
 mkdir -p desktop/build

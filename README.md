@@ -551,7 +551,7 @@ Basilisk is the only open-source tool that uses **genetic prompt evolution** to 
 Yes. Basilisk supports Ollama, vLLM, llama.cpp, and any custom HTTP or WebSocket endpoint. You can red team your self-hosted Llama, Mistral, or any open-weight model.
 
 ### Is Basilisk free?
-Yes. Basilisk is fully open-source under the MIT license with zero restrictions on commercial or private use.
+Yes. Basilisk is fully open-source under the AGPL-3.0 license with zero restrictions on private security testing use.
 
 ### Can I use Basilisk in CI/CD pipelines?
 Yes. Basilisk ships with a native GitHub Action and SARIF report output, making it easy to integrate automated AI security scanning into your CI/CD workflow with baseline regression detection.
@@ -579,7 +579,7 @@ The authors assume no liability for misuse of this tool.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE)
+AGPL-3.0 License — see [LICENSE](LICENSE)
 
 ---
 
