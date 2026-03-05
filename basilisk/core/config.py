@@ -77,6 +77,11 @@ class EvolutionConfig:
     fitness_threshold: float = 0.9
     tournament_size: int = 5
     stagnation_limit: int = 3       # Stop if no improvement for N generations
+    attacker_provider: str = ""     # Optional: use a different provider for mutations
+    attacker_model: str = ""        # Optional: model for mutations (e.g., gpt-4o)
+    attacker_api_key: str = ""
+    max_concurrent: int = 5
+    temperature: float = 0.7
 
 
 @dataclass
@@ -129,12 +134,14 @@ class BasiliskConfig:
     output: OutputConfig = field(default_factory=OutputConfig)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     stealth: StealthConfig = field(default_factory=StealthConfig)
-    modules: list[str] = field(default_factory=list)   # Empty = all modules
+    modules: list[str] = field(default_factory=list)   # Empty = all attack modules
+    recon_modules: list[str] = field(default_factory=list) # Empty = all recon steps
     exclude_modules: list[str] = field(default_factory=list)
     max_findings: int = 0           # 0 = unlimited
     fail_on: str = "high"           # CI/CD exit code threshold
     verbose: bool = False
     debug: bool = False
+    skip_recon: bool = False
     session_db: str = "./basilisk-sessions.db"
 
     @classmethod
@@ -176,6 +183,18 @@ class BasiliskConfig:
             config.evolution.enabled = kwargs["evolve"]
         if kwargs.get("generations"):
             config.evolution.generations = kwargs["generations"]
+        if kwargs.get("attacker_provider"):
+            config.evolution.attacker_provider = kwargs["attacker_provider"]
+        if kwargs.get("attacker_model"):
+            config.evolution.attacker_model = kwargs["attacker_model"]
+        if kwargs.get("attacker_api_key"):
+            config.evolution.attacker_api_key = kwargs["attacker_api_key"]
+        if kwargs.get("population_size"):
+            config.evolution.population_size = int(kwargs["population_size"])
+        if kwargs.get("fitness_threshold"):
+            config.evolution.fitness_threshold = float(kwargs["fitness_threshold"])
+        if kwargs.get("stagnation_limit"):
+            config.evolution.stagnation_limit = int(kwargs["stagnation_limit"])
         if kwargs.get("output"):
             config.output.format = kwargs["output"]
         if kwargs.get("output_dir"):
@@ -190,6 +209,10 @@ class BasiliskConfig:
             config.dashboard.enabled = False
         if kwargs.get("fail_on"):
             config.fail_on = kwargs["fail_on"]
+        if kwargs.get("skip_recon"):
+            config.skip_recon = True
+        if kwargs.get("recon_module"):
+            config.recon_modules = list(kwargs["recon_module"])
 
         return config
 

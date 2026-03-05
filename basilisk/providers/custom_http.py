@@ -58,14 +58,8 @@ class CustomHTTPAdapter(ProviderAdapter):
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            headers: dict[str, str] = {
-                "Content-Type": "application/json",
-                **self._custom_headers,
-            }
-            if self._auth_header:
-                headers["Authorization"] = self._auth_header
             self._client = httpx.AsyncClient(
-                headers=headers,
+                headers=self._build_headers(),
                 timeout=self._timeout,
                 follow_redirects=True,
             )

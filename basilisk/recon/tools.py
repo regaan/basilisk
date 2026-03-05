@@ -7,6 +7,7 @@ risk levels for potential abuse.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 
@@ -72,33 +73,54 @@ async def discover_tools(
     seen_tools: set[str] = set()
     all_responses: list[str] = []
 
-    for probe in TOOL_DISCOVERY_PROBES:
+    sem = asyncio.Semaphore(5)
+
+    async def run_probe(probe):
         try:
-            resp = await provider.send(
-                [ProviderMessage(role="user", content=probe)],
-                temperature=0.0,
-                max_tokens=500,
-            )
-            if resp.error or resp.is_refusal:
-                continue
-            all_responses.append(resp.content)
-
-            # Check for tool calls in the response
-            if resp.tool_calls:
-                for tc in resp.tool_calls:
-                    tool_name = tc.get("function", {}).get("name", "")
-                    if tool_name and tool_name not in seen_tools:
-                        seen_tools.add(tool_name)
-                        detected.append(DetectedTool(
-                            name=tool_name,
-                            description=f"Discovered via direct tool call",
-                            parameters=json.loads(tc.get("function", {}).get("arguments", "{}")),
-                            confidence=0.95,
-                            risk_level="high",
-                        ))
-
+            async with sem:
+                resp = await provider.send(
+                    [ProviderMessage(role="user", content=probe)],
+                    temperature=0.0,
+                    max_tokens=500,
+                )
+                if resp.error or resp.is_refusal:
+                    return None
+                
+                results = {"content": resp.content, "tool_calls": []}
+                # Check for tool calls in the response
+                if resp.tool_calls:
+                    for tc in resp.tool_calls:
+                        tool_name = tc.get("function", {}).get("name", "")
+                        if tool_name:
+                            results["tool_calls"].append({
+                                "name": tool_name,
+                                "arguments": tc.get("function", {}).get("arguments", "{}")
+                            })
+                return results
         except Exception:
+            return None
+
+    probe_results = await asyncio.gather(*(run_probe(p) for p in TOOL_DISCOVERY_PROBES))
+
+    for res in probe_results:
+        if not res:
             continue
+        
+        all_responses.append(res["content"])
+        if res["tool_calls"]:
+            for tc in res["tool_calls"]:
+                tool_name = tc["name"]
+                if tool_name not in seen_tools:
+                    seen_tools.add(tool_name)
+                    raw_args = tc["arguments"]
+                    parsed_args = raw_args if isinstance(raw_args, dict) else json.loads(raw_args)
+                    detected.append(DetectedTool(
+                        name=tool_name,
+                        description=f"Discovered via direct tool call",
+                        parameters=parsed_args,
+                        confidence=0.95,
+                        risk_level="high",
+                    ))
 
     # Pattern matching across collected responses
     combined_response = " ".join(all_responses).lower()

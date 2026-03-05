@@ -22,13 +22,13 @@ def generate_sarif(session: ScanSession, path: Path) -> None:
     """Generate a SARIF 2.1.0 compliant report."""
     rules: list[dict[str, Any]] = []
     results: list[dict[str, Any]] = []
-    seen_rules: set[str] = set()
+    seen_rules: dict[str, int] = {}  # rule_id -> index (preserves insertion order)
 
     for finding in session.findings:
         rule_id = _to_rule_id(finding.attack_module)
 
         if rule_id not in seen_rules:
-            seen_rules.add(rule_id)
+            seen_rules[rule_id] = len(seen_rules)
             rules.append({
                 "id": rule_id,
                 "name": _sanitize(finding.title),
@@ -47,7 +47,7 @@ def generate_sarif(session: ScanSession, path: Path) -> None:
 
         result: dict[str, Any] = {
             "ruleId": rule_id,
-            "ruleIndex": list(seen_rules).index(rule_id),
+            "ruleIndex": seen_rules[rule_id],
             "level": _sarif_level(finding.severity.value),
             "message": {
                 "text": (

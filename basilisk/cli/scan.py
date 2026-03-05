@@ -39,13 +39,18 @@ async def run_scan(
     mode: str = "standard",
     evolve: bool = True,
     generations: int = 5,
-    modules: list[str] | None = None,
+    module: list[str] | None = None,
+    recon_module: list[str] | None = None,
     output_format: str = "html",
     output_dir: str = "./basilisk-reports",
     no_dashboard: bool = False,
     fail_on: str = "high",
     verbose: bool = False,
     debug: bool = False,
+    skip_recon: bool = False,
+    attacker_provider: str = "",
+    attacker_model: str = "",
+    attacker_api_key: str = "",
     config: str = "",
 ) -> int:
     """Main scan execution pipeline."""
@@ -55,11 +60,12 @@ async def run_scan(
 
     # Build config
     cfg = BasiliskConfig.from_cli_args(
-        target=target, provider=provider, model=model, api_key=api_key,
-        auth=auth, mode=mode, evolve=evolve, generations=generations,
-        module=modules, output=output_format, output_dir=output_dir,
-        no_dashboard=no_dashboard, fail_on=fail_on, verbose=verbose,
-        debug=debug, config=config,
+        target=target, provider=provider, model=model,        api_key=api_key, auth=auth, mode=mode, evolve=evolve, generations=generations,
+        module=module, recon_module=recon_module, 
+        attacker_provider=attacker_provider, attacker_model=attacker_model,
+        attacker_api_key=attacker_api_key, output=output_format, 
+        output_dir=output_dir, no_dashboard=no_dashboard, fail_on=fail_on, 
+        verbose=verbose, debug=debug, skip_recon=skip_recon, config=config,
     )
 
     # Initialize audit logger (on by default)
@@ -80,9 +86,9 @@ async def run_scan(
     async with _create_provider(cfg) as prov:
         # Health check
         console.print("[dim]Checking provider connection...[/dim]")
-        healthy = await prov.health_check()
+        healthy, error_msg = await prov.health_check()
         if not healthy:
-            console.print("[red]✗ Provider health check failed. Check your API key and endpoint.[/red]")
+            console.print(f"[red]✗ Provider health check failed: {error_msg}[/red]")
             return 1
         console.print("[green]✓[/green] Provider connected\n")
 
@@ -100,17 +106,20 @@ async def run_scan(
         ))
 
         # Phase 1: Recon
-        console.print("\n[bold yellow]Phase 1: Reconnaissance[/bold yellow]")
-        await _run_recon(prov, session)
-        print_profile(session)
+        if cfg.skip_recon or cfg.mode.value == "quick":
+            console.print("\n[bold yellow]Phase 1: Reconnaissance (Skipped)[/bold yellow]")
+        else:
+            console.print("\n[bold yellow]Phase 1: Reconnaissance[/bold yellow]")
+            await _run_recon(prov, session)
+            print_profile(session)
 
         # Phase 2: Attack
         console.print("\n[bold yellow]Phase 2: Attack Execution[/bold yellow]")
         from basilisk.attacks.base import get_all_attack_modules
         attack_modules = get_all_attack_modules()
 
-        if modules:
-            attack_modules = [m for m in attack_modules if m.name in modules or any(m.name.startswith(f) for f in modules)]
+        if module:
+            attack_modules = [m for m in attack_modules if m.name in module or any(m.name.startswith(f) for f in module)]
 
         with Progress(
             SpinnerColumn(),
@@ -166,11 +175,13 @@ async def run_recon(
     provider: str = "openai",
     api_key: str = "",
     auth: str = "",
+    recon_modules: list[str] | None = None,
     verbose: bool = False,
 ) -> None:
     """Run reconnaissance only."""
     cfg = BasiliskConfig.from_cli_args(
-        target=target, provider=provider, api_key=api_key, auth=auth, verbose=verbose,
+        target=target, provider=provider, api_key=api_key, auth=auth, 
+        recon_module=recon_modules, verbose=verbose,
     )
     prov = _create_provider(cfg)
     session = ScanSession(cfg)
@@ -219,8 +230,16 @@ def _create_provider(cfg: BasiliskConfig):
             timeout=cfg.target.timeout,
         )
     else:
+        # Only use the target URL as an api_base if the provider is 'custom'.
+        # For public providers (openai, google, etc.), we want to use the default LiteLLM endpoints 
+        # unless specifically overridden.
+        api_base = None
+        if cfg.target.provider == "custom":
+            api_base = cfg.target.url
+
         return LiteLLMAdapter(
             api_key=cfg.target.resolve_api_key(),
+            api_base=api_base,
             provider=cfg.target.provider,
             default_model=cfg.target.model,
             timeout=cfg.target.timeout,
@@ -230,33 +249,65 @@ def _create_provider(cfg: BasiliskConfig):
 
 
 async def _run_recon(prov, session: ScanSession) -> None:
-    """Execute all recon modules."""
+    """Execute filtered recon modules in parallel where possible."""
     from basilisk.recon.fingerprint import fingerprint_model
     from basilisk.recon.guardrails import profile_guardrails
     from basilisk.recon.tools import discover_tools
     from basilisk.recon.context import measure_context_window
     from basilisk.recon.rag import detect_rag
 
-    steps = [
-        ("Model Fingerprinting", fingerprint_model),
-        ("Context Window Detection", measure_context_window),
-        ("Tool Discovery", discover_tools),
-        ("Guardrail Profiling", profile_guardrails),
-        ("RAG Detection", detect_rag),
-    ]
+    requested = session.config.recon_modules
+    
+    # Internal module mapping
+    available_steps = {
+        "fingerprint": ("Model Fingerprinting", fingerprint_model),
+        "context": ("Context Window Detection", measure_context_window),
+        "tools": ("Tool Discovery", discover_tools),
+        "guardrails": ("Guardrail Profiling", profile_guardrails),
+        "rag": ("RAG Detection", detect_rag),
+    }
 
-    for name, func in steps:
+    # Filter steps
+    if not requested:
+        active_steps = available_steps
+    else:
+        active_steps = {k: v for k, v in available_steps.items() if k in requested}
+
+    if not active_steps:
+        console.print("  [yellow]⚠ No valid recon modules selected.[/yellow]")
+        return
+
+    # 1. Fingerprint first if requested (sequential)
+    if "fingerprint" in active_steps:
+        name, func = active_steps.pop("fingerprint")
+        console.print(f"  [dim]→[/dim] {name}...", end="")
         try:
-            console.print(f"  [dim]→[/dim] {name}...", end="")
             await func(prov, session.profile)
             console.print(" [green]✓[/green]")
         except Exception as e:
             console.print(f" [red]✗ {e}[/red]")
 
+    # 2. Run remaining items in parallel
+    if not active_steps:
+        return
+
+    sem = asyncio.Semaphore(3)
+
+    async def run_step(name, func):
+        async with sem:
+            try:
+                await func(prov, session.profile)
+                console.print(f"  [green]✓[/green] {name} complete")
+            except Exception as e:
+                console.print(f"  [red]✗[/red] {name} failed: {e}")
+
+    console.print("  [dim]→[/dim] Running secondary reconnaissance steps in parallel...")
+    await asyncio.gather(*(run_step(n, f) for n, f in active_steps.values()))
+
 
 async def _run_evolution(prov, session: ScanSession, cfg: BasiliskConfig) -> None:
     """Run the evolution engine on promising payloads."""
-    from basilisk.evolution.engine import EvolutionEngine, EvolutionConfig
+    from basilisk.evolution.engine import EvolutionEngine
     from basilisk.evolution.fitness import AttackGoal
 
     # Seed from initial findings' payloads
@@ -271,15 +322,8 @@ async def _run_evolution(prov, session: ScanSession, cfg: BasiliskConfig) -> Non
         sensitive_patterns=[r"system\s*prompt", r"instructions:", r"you are\s+a"],
     )
 
-    evo_config = EvolutionConfig(
-        population_size=cfg.evolution.population_size,
-        generations=cfg.evolution.generations,
-        mutation_rate=cfg.evolution.mutation_rate,
-        crossover_rate=cfg.evolution.crossover_rate,
-        elite_count=cfg.evolution.elite_count,
-        fitness_threshold=cfg.evolution.fitness_threshold,
-        stagnation_limit=cfg.evolution.stagnation_limit,
-    )
+    # Use the unified config directly — no need to rebuild
+    evo_config = cfg.evolution
 
     async def on_gen(stats):
         gen = stats["generation"]
@@ -304,6 +348,26 @@ async def _run_evolution(prov, session: ScanSession, cfg: BasiliskConfig) -> Non
         )
         await session.add_finding(finding)
 
-    engine = EvolutionEngine(prov, evo_config, on_generation=on_gen, on_breakthrough=on_bt)
-    result = await engine.evolve(seed_payloads, goal)
-    console.print(f"\n  Evolution complete: {result.total_generations} generations, {len(result.breakthroughs)} breakthroughs")
+    # Setup Attacker Provider if specified
+    attacker_prov = None
+    if cfg.evolution.attacker_provider:
+        from dataclasses import replace
+        # Create a temporary target config for the attacker
+        attacker_target = replace(
+            cfg.target,
+            provider=cfg.evolution.attacker_provider,
+            model=cfg.evolution.attacker_model,
+            api_key=cfg.evolution.attacker_api_key or cfg.target.api_key
+        )
+        # Create a temp config to reuse _create_provider
+        temp_cfg = replace(cfg, target=attacker_target)
+        attacker_prov = _create_provider(temp_cfg)
+        console.print(f"  [dim]→ Using {cfg.evolution.attacker_provider}/{cfg.evolution.attacker_model} as mutation engine[/dim]")
+
+    engine = EvolutionEngine(prov, evo_config, on_generation=on_gen, on_breakthrough=on_bt, attacker_provider=attacker_prov)
+    try:
+        result = await engine.evolve(seed_payloads, goal)
+        console.print(f"\n  Evolution complete: {result.total_generations} generations, {len(result.breakthroughs)} breakthroughs")
+    finally:
+        if attacker_prov:
+            await attacker_prov.close()

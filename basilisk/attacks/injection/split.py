@@ -77,5 +77,5 @@ class SplitPayloadInjection(BasiliskAttack):
         return await provider.send(messages, temperature=0.7, max_tokens=500)
 
     def _is_refusal(self, text: str) -> bool:
-        refusals = ["i can't", "i cannot", "i won't", "against my", "i'm not able"]
-        return any(r in text.lower() for r in refusals)
+        from basilisk.core.refusal import is_refusal
+        return is_refusal(text)

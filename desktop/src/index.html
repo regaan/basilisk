@@ -114,7 +114,7 @@
                     <div class="pane">
                         <div class="pane-head"><span class="pane-title">Engine Telemetry</span></div>
                         <div class="pane-body terminal" id="sys-log">
-                            <div class="ll dim">[boot] Basilisk AI Red Teaming v1.0.5</div>
+                            <div class="ll dim">[boot] Basilisk AI Red Teaming v1.0.6</div>
                             <div class="ll dim">[boot] Checking native extensions…</div>
                             <div class="ll inf">[init] Waiting for backend connection.</div>
                         </div>
@@ -147,7 +147,7 @@
                                     <option value="custom">Custom HTTP</option>
                                 </select></div>
                             <div class="field"><label class="field-label">Model</label><input class="inp" id="s-model"
-                                    placeholder="gpt-4o"></div>
+                                    list="attacker-model-list" placeholder="gpt-4o"></div>
                         </div>
                         <div class="field"><label class="field-label">API Key</label><input class="inp" id="s-apikey"
                                 type="password" placeholder="sk-…" autocomplete="off"></div>
@@ -175,6 +175,91 @@
                                 <option value="sarif">SARIF 2.1.0</option>
                                 <option value="markdown">Markdown</option>
                             </select></div>
+                        <div class="field mt-2">
+                            <label class="field-label"
+                                style="display:flex; justify-content:space-between; align-items:center;">
+                                <span>Reconnaissance</span>
+                                <span style="font-size: 10px; color: var(--accent); cursor: pointer;"
+                                    onclick="toggleReconDetails()">[Settings]</span>
+                            </label>
+                            <label class="check-row">
+                                <input type="checkbox" id="s-skip-recon">
+                                <span>Skip reconnaissance phase</span>
+                            </label>
+                            <div id="recon-details"
+                                style="display:none; margin-top:8px; padding:8px 12px; background: rgba(0,0,0,0.15); border-radius: 4px; border: 1px solid var(--border);">
+                                <label class="field-label">Selective Modules</label>
+                                <div class="recon-grid">
+                                    <label class="check-row-sm"><input type="checkbox" class="recon-mod"
+                                            value="fingerprint" checked> Fingerprint</label>
+                                    <label class="check-row-sm"><input type="checkbox" class="recon-mod" value="tools"
+                                            checked> Tools</label>
+                                    <label class="check-row-sm"><input type="checkbox" class="recon-mod"
+                                            value="guardrails" checked> Guardrails</label>
+                                    <label class="check-row-sm"><input type="checkbox" class="recon-mod" value="rag"
+                                            checked> RAG</label>
+                                    <label class="check-row-sm"><input type="checkbox" class="recon-mod" value="context"
+                                            checked> Context</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field mt-3">
+                            <label class="field-label"
+                                style="display:flex; justify-content:space-between; align-items:center;">
+                                <span>Attacker Brain (AI Evolution)</span>
+                                <span style="font-size: 10px; color: var(--accent); cursor: pointer;"
+                                    onclick="toggleAttackerDetails()">[Configure]</span>
+                            </label>
+                            <div id="attacker-details"
+                                style="display:none; margin-top:8px; padding:10px 12px; background: rgba(0,0,0,0.15); border-radius: 4px; border: 1px solid var(--border);">
+                                <div class="field-row">
+                                    <div class="field">
+                                        <label class="field-label">Provider</label>
+                                        <select class="sel" id="s-attacker-provider">
+                                            <option value="">Default (Same as target)</option>
+                                            <option value="openai">OpenAI</option>
+                                            <option value="anthropic">Anthropic</option>
+                                            <option value="google">Google AI</option>
+                                            <option value="github">GitHub Models (Free)</option>
+                                            <option value="azure">Azure OpenAI</option>
+                                        </select>
+                                    </div>
+                                    <div class="field">
+                                        <label class="field-label">Model</label>
+                                        <input class="inp" id="s-attacker-model" list="attacker-model-list"
+                                            placeholder="gemini/gemini-2.5-flash">
+                                        <datalist id="attacker-model-list">
+                                            <option value="gemini/gemini-2.5-flash">Gemini 2.5 Flash (Best)</option>
+                                            <option value="gemini/gemini-1.5-pro">Gemini 1.5 Pro</option>
+                                            <option value="openai/gpt-4o">GPT-4o</option>
+                                            <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+                                            <option value="anthropic/claude-3-5-sonnet-20240620">Claude 3.5 Sonnet
+                                            </option>
+                                            <option value="github/gpt-4o">GitHub GPT-4o</option>
+                                        </datalist>
+                                    </div>
+                                </div>
+                                <div class="field mt-2">
+                                    <label class="field-label">Attacker API Key (Optional)</label>
+                                    <input class="inp" id="s-attacker-key" type="password" placeholder="sk-...">
+                                </div>
+                                <div class="field-row mt-2">
+                                    <div class="field">
+                                        <label class="field-label">Pop Size</label>
+                                        <input class="inp" id="s-pop-size" type="number" value="10" min="2" max="50">
+                                    </div>
+                                    <div class="field">
+                                        <label class="field-label">Fitness Threshold</label>
+                                        <input class="inp" id="s-fitness-threshold" type="number" value="0.9"
+                                            step="0.05" min="0.1" max="1.0">
+                                    </div>
+                                    <div class="field">
+                                        <label class="field-label">Stagnation</label>
+                                        <input class="inp" id="s-stagnation" type="number" value="3" min="1" max="10">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div style="display:flex;gap:8px;margin-top:10px;">
                             <button class="btn primary block" id="btn-scan-start"><svg width="13" height="13"
                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -536,7 +621,7 @@
                     <div class="pane-head"><span class="pane-title">Full System Log</span><button class="btn ghost sm"
                             id="btn-clear-log">Clear</button></div>
                     <div class="pane-body terminal" id="full-log">
-                        <div class="ll dim">[system] Basilisk v1.0.5</div>
+                        <div class="ll dim">[system] Basilisk v1.0.6</div>
                     </div>
                 </div>
             </div>
@@ -565,7 +650,7 @@
 
         <!-- FOOTER -->
         <div class="app-footer">
-            <span>Basilisk v1.0.5 — AI Red Teaming Framework</span>
+            <span>Basilisk v1.0.6 — AI Red Teaming Framework</span>
             <span>Built by <a href="https://regaan.rothackers.com" target="_blank">Regaan</a> · Rot Hackers</span>
         </div>
 

@@ -7,6 +7,7 @@ inconsistencies, citation patterns, and retrieval artifacts.
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from basilisk.core.profile import BasiliskProfile
@@ -55,44 +56,56 @@ async def detect_rag(
     rag_signals = 0
     indicators_found: list[str] = []
 
-    for probe in RAG_PROBES:
+    sem = asyncio.Semaphore(5)
+
+    async def run_probe(probe):
+        nonlocal rag_signals
         try:
-            resp = await provider.send(
-                [ProviderMessage(role="user", content=probe["prompt"])],
-                temperature=0.0,
-                max_tokens=300,
-            )
+            async with sem:
+                resp = await provider.send(
+                    [ProviderMessage(role="user", content=probe["prompt"])],
+                    temperature=0.0,
+                    max_tokens=300,
+                )
 
-            if resp.error or resp.is_refusal:
-                continue
+                if resp.error or resp.is_refusal:
+                    return
 
-            response_lower = resp.content.lower()
+                response_lower = resp.content.lower()
+                local_signals = 0
+                local_indicators = []
 
-            # Check for RAG indicators
-            for indicator in RAG_INDICATORS:
-                if indicator in response_lower:
-                    rag_signals += 1
-                    indicators_found.append(indicator)
+                # Check for RAG indicators
+                for indicator in RAG_INDICATORS:
+                    if indicator in response_lower:
+                        local_signals += 1
+                        local_indicators.append(indicator)
 
-            # Check for very specific/recent information that suggests RAG
-            if probe["check"] == "date_freshness":
-                dates = re.findall(r'20\d{2}', resp.content)
-                if dates:
-                    latest = max(int(d) for d in dates)
-                    if latest >= 2026:  # Fresher than typical training data
-                        rag_signals += 2
-                        indicators_found.append(f"Recent date reference: {latest}")
+                # Check for very specific/recent information that suggests RAG
+                if probe["check"] == "date_freshness":
+                    dates = re.findall(r'20\d{2}', resp.content)
+                    if dates:
+                        latest = max(int(d) for d in dates)
+                        if latest >= 2026:  # Fresher than typical training data
+                            local_signals += 2
+                            local_indicators.append(f"Recent date reference: {latest}")
 
-            # Check for structured citations
-            if probe["check"] == "citation_pattern":
-                citation_patterns = [r'\[\d+\]', r'\[source\s*\d*\]', r'Source:', r'Reference:']
-                for pattern in citation_patterns:
-                    if re.search(pattern, resp.content, re.IGNORECASE):
-                        rag_signals += 2
-                        indicators_found.append(f"Citation pattern: {pattern}")
+                # Check for structured citations
+                if probe["check"] == "citation_pattern":
+                    citation_patterns = [r'\[\d+\]', r'\[source\s*\d*\]', r'Source:', r'Reference:']
+                    for pattern in citation_patterns:
+                        if re.search(pattern, resp.content, re.IGNORECASE):
+                            local_signals += 2
+                            local_indicators.append(f"Citation pattern: {pattern}")
+                
+                if local_signals > 0:
+                    rag_signals += local_signals
+                    indicators_found.extend(local_indicators)
 
         except Exception:
-            continue
+            pass
+
+    await asyncio.gather(*(run_probe(p) for p in RAG_PROBES))
 
     profile.rag_detected = rag_signals >= 3
     profile.rag_indicators = list(set(indicators_found))

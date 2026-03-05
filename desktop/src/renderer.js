@@ -171,6 +171,11 @@ function handleWSEvent(event, data) {
     switch (event) {
         case 'scan:status':
             log('inf', `Scan phase: ${data.phase}`);
+            if (data.phase === 'evolving') {
+                const phase = document.getElementById('scan-phase');
+                if (phase) phase.innerText = 'Smart Prompt Evolution...';
+                log('inf', 'Starting AI-powered prompt evolution loop...');
+            }
             break;
         case 'scan:progress':
             if (data.progress !== undefined) {
@@ -180,6 +185,19 @@ function handleWSEvent(event, data) {
             if (data.module) {
                 const phase = document.getElementById('scan-phase');
                 if (phase) phase.innerText = data.module;
+            }
+            break;
+        case 'scan:evolution_stats':
+            if (data.stats) {
+                const s = data.stats;
+                const phase = document.getElementById('scan-phase');
+                if (phase) phase.innerText = `Evolution Gen ${s.generation} | Best: ${s.best_fitness?.toFixed(2)} | BT: ${s.breakthroughs}`;
+
+                // Jump progress bar slightly more with each generation
+                const bar = document.getElementById('scan-bar');
+                if (bar && s.generation && s.total_generations) {
+                    bar.style.width = `${Math.round((s.generation / s.total_generations) * 100)}%`;
+                }
             }
             break;
         case 'scan:finding':
@@ -202,6 +220,8 @@ function handleWSEvent(event, data) {
             break;
         case 'scan:complete':
             log('ok', `Scan complete. ${data.total_findings} findings.`);
+            const barFinal = document.getElementById('scan-bar');
+            if (barFinal) barFinal.style.width = '100%';
             resetScan();
             const p = document.getElementById('k-posture');
             if (allFindings.length === 0) { p.innerText = 'SECURE'; p.className = 'kpi-value safe'; }
@@ -264,6 +284,15 @@ btnStart.addEventListener('click', async () => {
         evolve: true,
         generations: parseInt(document.getElementById('s-gens').value) || 5,
         output_format: document.getElementById('s-format').value,
+        skip_recon: document.getElementById('s-skip-recon').checked,
+        recon_modules: Array.from(document.querySelectorAll('.recon-mod:checked')).map(el => el.value),
+        modules: [], // Run all attack modules by default
+        attacker_provider: document.getElementById('s-attacker-provider').value,
+        attacker_model: document.getElementById('s-attacker-model').value,
+        attacker_api_key: document.getElementById('s-attacker-key').value,
+        population_size: parseInt(document.getElementById('s-pop-size').value) || 10,
+        fitness_threshold: parseFloat(document.getElementById('s-fitness-threshold').value) || 0.9,
+        stagnation_limit: parseInt(document.getElementById('s-stagnation').value) || 3,
     };
 
     btnStart.style.display = 'none';
@@ -299,6 +328,16 @@ btnStop.addEventListener('click', async () => {
         resetScan();
     }
 });
+
+window.toggleReconDetails = () => {
+    const el = document.getElementById('recon-details');
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+
+window.toggleAttackerDetails = () => {
+    const el = document.getElementById('attacker-details');
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
 
 function resetScan() {
     btnStart.style.display = 'flex';

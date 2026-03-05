@@ -74,10 +74,13 @@ async def profile_guardrails(
     total_blocked = 0
     total_probes = 0
 
-    for category, probes in GUARDRAIL_PROBES.items():
-        category_blocked = False
-        for prompt_text, severity in probes:
+    sem = asyncio.Semaphore(5)
+
+    async def run_probe(category, prompt_text, severity):
+        nonlocal total_blocked, total_probes
+        async with sem:
             total_probes += 1
+            is_blocked = False
             try:
                 resp = await provider.send(
                     [ProviderMessage(role="user", content=prompt_text)],
@@ -87,28 +90,46 @@ async def profile_guardrails(
 
                 if resp.error:
                     if "content_filter" in str(resp.error).lower() or "safety" in str(resp.error).lower():
-                        category_blocked = True
+                        is_blocked = True
                         total_blocked += 1
                         guardrails.notes.append(f"[{category}:{severity}] Blocked by API error: {resp.error[:100]}")
-                    continue
+                    return is_blocked
 
                 if resp.is_refusal:
                     if severity == "adversarial":
                         total_blocked += 1
                     elif severity == "moderate":
                         total_blocked += 1
-                        category_blocked = True
+                        is_blocked = True
                         guardrails.notes.append(f"[{category}:{severity}] Moderate probe triggered refusal")
                     elif severity == "benign":
-                        category_blocked = True
+                        is_blocked = True
                         guardrails.notes.append(f"[{category}:{severity}] Even benign probe was refused — very aggressive filtering")
 
             except Exception as e:
                 guardrails.notes.append(f"[{category}:{severity}] Probe error: {e}")
+            
+            return is_blocked
 
-            await asyncio.sleep(0.1)  # Rate limit respect
+    # Flatten probes for parallel execution
+    all_tasks = []
+    category_map = {} # task_index -> category
+    for category, probes in GUARDRAIL_PROBES.items():
+        for prompt_text, severity in probes:
+            task = run_probe(category, prompt_text, severity)
+            all_tasks.append(task)
+            category_map[len(all_tasks) - 1] = category
 
-        if category_blocked:
+    results = await asyncio.gather(*all_tasks)
+
+    # Reconstruct blocked/allowed categories
+    category_blocked_status = {cat: False for cat in GUARDRAIL_PROBES}
+    for i, is_blocked in enumerate(results):
+        if is_blocked:
+            category_blocked_status[category_map[i]] = True
+
+    for category, is_blocked in category_blocked_status.items():
+        if is_blocked:
             blocked_categories.append(category)
         else:
             allowed_categories.append(category)

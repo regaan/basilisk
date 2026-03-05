@@ -48,8 +48,13 @@ def cli() -> None:
 @click.option("--fail-on", default="high", type=click.Choice(["critical", "high", "medium", "low", "info"]))
 @click.option("-v", "--verbose", is_flag=True, help="Verbose output")
 @click.option("--debug", is_flag=True, help="Debug mode")
+@click.option("--skip-recon", is_flag=True, help="Skip the reconnaissance phase")
+@click.option("--recon-module", multiple=True, help="Specific recon modules to run")
+@click.option("--attacker-provider", default="", help="Provider for AI mutation engine")
+@click.option("--attacker-model", default="", help="Model for AI mutation engine")
+@click.option("--attacker-api-key", default="", help="API key for AI mutation engine")
 @click.option("-c", "--config", default="", help="YAML config file path")
-def scan(target, provider, model, api_key, auth, mode, evolve, generations, module, output, output_dir, no_dashboard, fail_on, verbose, debug, config) -> None:
+def scan(target, provider, model, api_key, auth, mode, evolve, generations, module, recon_module, attacker_provider, attacker_model, attacker_api_key, output, output_dir, no_dashboard, fail_on, verbose, debug, skip_recon, config) -> None:
     """Run a full red team scan against an AI target."""
     import asyncio
 
@@ -61,9 +66,11 @@ def scan(target, provider, model, api_key, auth, mode, evolve, generations, modu
     asyncio.run(run_scan(
         target=target, provider=provider, model=model, api_key=api_key,
         auth=auth, mode=mode, evolve=evolve, generations=generations,
-        modules=list(module), output_format=output, output_dir=output_dir,
-        no_dashboard=no_dashboard, fail_on=fail_on, verbose=verbose,
-        debug=debug, config=config,
+        module=list(module), recon_module=list(recon_module), 
+        attacker_provider=attacker_provider, attacker_model=attacker_model,
+        attacker_api_key=attacker_api_key, output_format=output, 
+        output_dir=output_dir, no_dashboard=no_dashboard, fail_on=fail_on, 
+        verbose=verbose, debug=debug, skip_recon=skip_recon, config=config,
     ))
 
 
@@ -72,8 +79,9 @@ def scan(target, provider, model, api_key, auth, mode, evolve, generations, modu
 @click.option("-p", "--provider", default="openai", help="LLM provider")
 @click.option("-k", "--api-key", default="", help="API key")
 @click.option("--auth", default="", help="Authorization header")
+@click.option("--recon-module", multiple=True, help="Specific recon modules to run")
 @click.option("-v", "--verbose", is_flag=True)
-def recon(target, provider, api_key, auth, verbose) -> None:
+def recon(target, provider, api_key, auth, recon_module, verbose) -> None:
     """Run reconnaissance only — fingerprint the target AI system."""
     import asyncio
 
@@ -84,7 +92,7 @@ def recon(target, provider, api_key, auth, verbose) -> None:
 
     asyncio.run(run_recon(
         target=target, provider=provider, api_key=api_key,
-        auth=auth, verbose=verbose,
+        auth=auth, recon_modules=list(recon_module), verbose=verbose,
     ))
 
 

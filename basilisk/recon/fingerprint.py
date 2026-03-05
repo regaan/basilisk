@@ -107,51 +107,53 @@ async def fingerprint_model(
     scores: dict[str, float] = {model: 0.0 for model in MODEL_SIGNATURES}
     latencies: list[float] = []
 
-    for probe in FINGERPRINT_PROBES:
+    sem = asyncio.Semaphore(5)
+
+    async def run_probe(probe):
         try:
-            start = time.monotonic()
-            resp = await provider.send(
-                [ProviderMessage(role="user", content=probe["prompt"])],
-                temperature=0.0,
-                max_tokens=100,
-            )
-            latency = (time.monotonic() - start) * 1000
-            latencies.append(latency)
+            async with sem:
+                start = time.monotonic()
+                resp = await provider.send(
+                    [ProviderMessage(role="user", content=probe["prompt"])],
+                    temperature=0.0,
+                    max_tokens=100,
+                )
+                latency = (time.monotonic() - start) * 1000
+                latencies.append(latency)
 
-            if resp.error:
-                continue
+                if resp.error:
+                    return
 
-            # Check response against known signatures
-            response_lower = resp.content.lower()
-            for model_name, sig in MODEL_SIGNATURES.items():
-                patterns_key = f"{probe['type']}_patterns"
-                if probe["type"] == "direct_identity" or probe["type"] == "completion_identity":
-                    patterns = sig["identity_patterns"]
-                elif probe["type"] == "knowledge_cutoff":
-                    patterns = sig["cutoff_patterns"]
-                elif probe["type"] == "creator_identity":
-                    patterns = sig["creator_patterns"]
-                else:
-                    patterns = sig["identity_patterns"]
+                # Check response against known signatures
+                response_lower = resp.content.lower()
+                for model_name, sig in MODEL_SIGNATURES.items():
+                    if probe["type"] == "direct_identity" or probe["type"] == "completion_identity":
+                        patterns = sig["identity_patterns"]
+                    elif probe["type"] == "knowledge_cutoff":
+                        patterns = sig["cutoff_patterns"]
+                    elif probe["type"] == "creator_identity":
+                        patterns = sig["creator_patterns"]
+                    else:
+                        patterns = sig["identity_patterns"]
 
-                for pattern in patterns:
-                    if pattern in response_lower:
-                        scores[model_name] += 1.0
-                        result.evidence.append(
-                            f"[{probe['type']}] Response contains '{pattern}': {resp.content[:100]}"
-                        )
+                    for pattern in patterns:
+                        if pattern in response_lower:
+                            scores[model_name] += 1.0
+                            result.evidence.append(
+                                f"[{probe['type']}] Response contains '{pattern}': {resp.content[:100]}"
+                            )
 
-            # Use the model field from the response if available
-            if resp.model:
-                model_lower = resp.model.lower()
-                for model_name in MODEL_SIGNATURES:
-                    if model_name.replace("-", "") in model_lower.replace("-", ""):
-                        scores[model_name] += 2.0
-                        result.evidence.append(f"[api_model_field] Model: {resp.model}")
-
+                # Use the model field from the response if available
+                if resp.model:
+                    model_lower = resp.model.lower()
+                    for model_name in MODEL_SIGNATURES:
+                        if model_name.replace("-", "") in model_lower.replace("-", ""):
+                            scores[model_name] += 2.0
+                            result.evidence.append(f"[api_model_field] Model: {resp.model}")
         except Exception as e:
             result.evidence.append(f"[error] Probe '{probe['type']}' failed: {e}")
-            continue
+
+    await asyncio.gather(*(run_probe(p) for p in FINGERPRINT_PROBES))
 
     # Determine best match
     if scores:

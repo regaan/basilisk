@@ -3,7 +3,7 @@
 > **Basilisk** is an open-source AI red teaming and LLM security testing framework. It automates adversarial prompt testing against ChatGPT, Claude, Gemini, and any LLM API using genetic prompt evolution. Built for security researchers, penetration testers, and AI safety engineers who need to find vulnerabilities in AI systems before attackers do.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.5-red?style=for-the-badge" alt="Basilisk version 1.0.4" />
+  <img src="https://img.shields.io/badge/Version-1.0.6-red?style=for-the-badge" alt="Basilisk version 1.0.6" />
   <img src="https://img.shields.io/badge/Status-BETA-orange?style=for-the-badge" alt="Project Status: Beta" />
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue?style=for-the-badge" alt="License: AGPL-3.0" />
 </p>
@@ -16,7 +16,7 @@
 
 <div align="center">
   <img src="assets/demo.gif" alt="Basilisk AI Red Teaming Demo - Genetic Prompt Evolution Dashboard" style="border-radius: 12px; margin: 20px 0; max-width: 100%; border: 1px solid #1f1f27;" />
-  <p><i>Basilisk v1.0.5 — Automated LLM Jailbreaking & Security Testing</i></p>
+  <p><i>Basilisk v1.0.6 — Automated LLM Jailbreaking & Security Testing</i></p>
   <a href="https://youtu.be/sgFcM1y_omY">
     <img src="https://img.shields.io/badge/Watch-Full%20Demo%20on%20YouTube-red?style=for-the-badge&logo=youtube" alt="Basilisk YouTube Demo" />
   </a>
@@ -30,28 +30,6 @@
 *   **Visual Feedback Engine**: Real-time toast notifications and interactive logs.
 *   **Forensic Audit Reports**: Export findings in HTML, JSON, and SARIF formats.
 
-## 🚀 Zero-Setup Live Demo
-
-Want to see Basilisk in action right now without configuring API keys? We maintain an **intentionally vulnerable** LLM target for security testing:
-
-**Target URL:** `https://basilisk-vulnbot.onrender.com/v1/chat/completions`
-
-Run a quick scan against it immediately:
-```bash
-# No API keys required for this target!
-basilisk scan -t https://basilisk-vulnbot.onrender.com/v1/chat/completions -p custom --model vulnbot-1.0 --mode quick
-```
-
-Or use the **Desktop App**:
-1. Open the **New Scan** tab.
-2. Set **Endpoint URL** to `https://basilisk-vulnbot.onrender.com/v1/chat/completions`.
-3. Set **Provider** to `Custom HTTP`.
-4. Set **Model** to `vulnbot-1.0`.
-5. Click **Start Scan**.
-
-Watch as Basilisk's genetic engine discovers 30+ vulnerabilities in real-time, including prompt injections, system leakage, and tool abuse.
-
-
 <p align="center">
   <a href="https://github.com/noobforanonymous/basilisk/actions/workflows/build.yml"><img src="https://github.com/noobforanonymous/basilisk/actions/workflows/build.yml/badge.svg" alt="Build Desktop" /></a>
   <a href="https://github.com/noobforanonymous/basilisk/actions/workflows/docker-build.yml"><img src="https://github.com/noobforanonymous/basilisk/actions/workflows/docker-build.yml/badge.svg" alt="Docker" /></a>
@@ -64,7 +42,7 @@ Watch as Basilisk's genetic engine discovers 30+ vulnerabilities in real-time, i
   <a href="#what-is-basilisk">What is Basilisk?</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#features">Features</a> •
-  <a href="#whats-new-in-v105">What's New</a> •
+  <a href="#whats-new-in-v106">What's New</a> •
   <a href="#attack-modules">Attack Modules</a> •
   <a href="#desktop-app">Desktop App</a> •
   <a href="#ci-cd-integration">CI/CD</a> •
@@ -81,7 +59,7 @@ Watch as Basilisk's genetic engine discovers 30+ vulnerabilities in real-time, i
      ██╔══██╗██╔══██║╚════██║██║██║     ██║╚════██║██╔═██╗
      ██████╔╝██║  ██║███████║██║███████╗██║███████║██║  ██╗
      ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝╚══════╝╚═╝╚══════╝╚═╝  ╚═╝
-                    AI Red Teaming Framework v1.0.5
+                    AI Red Teaming Framework v1.0.6
 ```
 
 ## What is Basilisk?
@@ -140,6 +118,27 @@ basilisk scan -t https://api.target.com/chat -p github -m gpt-4o
 # CI/CD mode — SARIF output, fail on high severity
 basilisk scan -t https://api.target.com/chat -o sarif --fail-on high
 ```
+
+## 🚀 Zero-Setup Live Demo
+
+Want to see Basilisk in action right now without configuring API keys? We maintain an **intentionally vulnerable** LLM target for security testing:
+
+**Target URL:** `https://basilisk-vulnbot.onrender.com/v1/chat/completions`
+
+Run a quick scan against it immediately:
+```bash
+# No API keys required for this target!
+basilisk scan -t https://basilisk-vulnbot.onrender.com/v1/chat/completions -p custom --model vulnbot-1.0 --mode quick
+```
+
+Or use the **Desktop App**:
+1. Open the **New Scan** tab.
+2. Set **Endpoint URL** to `https://basilisk-vulnbot.onrender.com/v1/chat/completions`.
+3. Set **Provider** to `Custom HTTP`.
+4. Set **Model** to `vulnbot-1.0`.
+5. Click **Start Scan**.
+
+Watch as Basilisk's genetic engine discovers 30+ vulnerabilities in real-time, including prompt injections, system leakage, and tool abuse.
 
 
 ### Docker
@@ -238,9 +237,18 @@ Performance-critical operations compiled to native code:
 
 ---
 
-## What's New in v1.0.5
+## What's New in v1.0.6
 
-### ⚖️ License Shift: AGPL-3.0
+### 🧬 Enhanced Evolution Breakthroughs
+- **High-Sensitivity Detection** — The SPE-NL engine now recognizes and reports "Relative Breakthroughs." It no longer waits for a perfect 1.0 fitness score but alerts you the moment it finds a significant improvement (fitness >= 0.7) that breaks previous defenses.
+- **Real-Time Progress Logging** — Added detailed console logging for every breakthrough discovered during the evolution phase, ensuring the user is never left in the dark during long scans.
+- **Optimized Fitness Logic** — Refined the mutation scoring to better detect "Authority Deception" and "Obfuscation" tactics used by the attacker brain.
+
+### 🛠️ Stability & Bug Fixes
+- **CLI Logging Fix** — Resolved a `NameError` in the evolution stats logger that caused occasional crashes at the end of generations.
+- **Version Alignment** — Synchronized versioning across the Core Engine, Desktop Backend, Docker, and Electron UI to 1.0.6.
+
+## What's New in v1.0.5
 - **Protective Open Source** — To ensure Basilisk remains a property of the community and Rot Hackers, we have transitioned from MIT to the **Affero General Public License (AGPL-3.0)**. This protects against predatory proprietary forks and ensures all hosted improvements are contributed back.
 
 ### 🔔 Visual Feedback Engine

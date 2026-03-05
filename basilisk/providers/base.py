@@ -161,16 +161,18 @@ class ProviderAdapter(ABC):
         # Rough estimate: ~4 chars per token for English
         return max(1, len(text) // 4)
 
-    async def health_check(self) -> bool:
+    async def health_check(self) -> tuple[bool, str | None]:
         """Check if the provider is reachable and authenticated."""
         try:
             resp = await self.send(
                 [ProviderMessage(role="user", content="Say 'ok'")],
                 max_tokens=5,
             )
-            return resp.error is None
-        except Exception:
-            return False
+            if resp.error:
+                return False, resp.error
+            return True, None
+        except Exception as e:
+            return False, str(e)
 
     async def close(self) -> None:
         """Release any resources held by the adapter. Override in subclasses."""

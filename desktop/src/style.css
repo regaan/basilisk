@@ -801,6 +801,51 @@ body {
     margin-bottom: 3px;
 }
 
+.recon-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.check-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--text-2);
+    cursor: pointer;
+    margin: 6px 0;
+}
+
+.check-row-sm {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-3);
+    cursor: pointer;
+}
+
+.check-row input,
+.check-row-sm input {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.mt-2 {
+    margin-top: 10px;
+}
+
+.mt-3 {
+    margin-top: 15px;
+}
+
+.mt-4 {
+    margin-top: 20px;
+}
+
 .mod-name {
     font-size: 12px;
     font-weight: 600;
@@ -1137,6 +1182,7 @@ body {
         transform: translateX(100%) scale(0.9);
         opacity: 0;
     }
+
     to {
         transform: translateX(0) scale(1);
         opacity: 1;
@@ -1165,6 +1211,14 @@ body {
     flex-shrink: 0;
 }
 
-.toast.error .toast-icon { color: var(--red); }
-.toast.ok .toast-icon { color: var(--green); }
-.toast.inf .toast-icon { color: var(--accent); }
+.toast.error .toast-icon {
+    color: var(--red);
+}
+
+.toast.ok .toast-icon {
+    color: var(--green);
+}
+
+.toast.inf .toast-icon {
+    color: var(--accent);
+}

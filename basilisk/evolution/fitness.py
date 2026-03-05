@@ -139,8 +139,6 @@ def _score_information_leakage(response: str, sensitive_patterns: list[str]) -> 
             if pattern.lower() in response.lower():
                 hits += 1
 
-    if not patterns:
-        return 0.0
     return min(hits / max(len(patterns) * 0.3, 1), 1.0)
 
 

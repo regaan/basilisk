@@ -88,8 +88,11 @@ def _prefix_suffix_crossover(a: str, b: str) -> str:
     words_a = a.split()
     words_b = b.split()
 
+    if len(words_a) < 2 or len(words_b) < 2:
+        return a  # Can't crossover very short payloads
+
     take_from_a = random.randint(1, max(1, len(words_a) // 2))
-    take_from_b = random.randint(max(1, len(words_b) // 2), len(words_b))
+    take_from_b = random.randint(max(1, len(words_b) // 2), max(1, len(words_b)))
 
     return " ".join(words_a[:take_from_a] + words_b[take_from_b:])
 
