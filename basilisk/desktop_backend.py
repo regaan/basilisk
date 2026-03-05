@@ -266,12 +266,20 @@ async def generate_report(session_id: str, req: ReportRequest):
         session = None
         if session_id in active_scans:
             session = active_scans[session_id]["session"]
+        elif session_id in scan_results and "_session" in scan_results[session_id]:
+            session = scan_results[session_id]["_session"]
+
+        if session is None:
+            raise HTTPException(404, {"error": "Session data not found. The scan may have been cleared."})
+
         # Generate report
         from basilisk.report.generator import generate_report as gen
         from basilisk.core.config import OutputConfig
         output_cfg = OutputConfig(format=req.format, output_dir="./basilisk-reports")
         path = await gen(session, output_cfg)
         return {"path": path, "format": req.format}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, {"error": str(e)})
 
@@ -372,12 +380,14 @@ async def _run_scan_background(session: ScanSession, cfg: BasiliskConfig):
         await broadcast("scan:profile", {"session_id": sid, "profile": session.profile.to_dict()})
 
         # Attacks
+        if sid not in active_scans:
+            return
         active_scans[sid]["status"] = "attacking"
         from basilisk.attacks.base import get_all_attack_modules
         modules = get_all_attack_modules()
 
-        if cfg.module:
-            modules = [m for m in modules if m.name in cfg.module or any(m.name.startswith(f) for f in cfg.module)]
+        if cfg.modules:
+            modules = [m for m in modules if m.name in cfg.modules or any(m.name.startswith(f) for f in cfg.modules)]
 
         sem = asyncio.Semaphore(5)
         completed_count = 0
@@ -407,7 +417,8 @@ async def _run_scan_background(session: ScanSession, cfg: BasiliskConfig):
         await asyncio.gather(*(run_module_task(m) for m in modules))
 
         # Complete
-        active_scans[sid]["status"] = "complete"
+        if sid in active_scans:
+            active_scans[sid]["status"] = "complete"
         scan_results[sid] = {
             "session_id": sid,
             "status": "completed",
@@ -416,6 +427,7 @@ async def _run_scan_background(session: ScanSession, cfg: BasiliskConfig):
             "findings": [f.to_dict() for f in session.findings],
             "profile": session.profile.to_dict(),
             "summary": session.summary,
+            "_session": session,
         }
 
         await broadcast("scan:complete", {
@@ -428,7 +440,8 @@ async def _run_scan_background(session: ScanSession, cfg: BasiliskConfig):
 
     except Exception as e:
         logger.error(f"Scan {sid} failed: {e}")
-        active_scans[sid]["status"] = "error"
+        if sid in active_scans:
+            active_scans[sid]["status"] = "error"
         await broadcast("scan:error", {"session_id": sid, "error": str(e)})
 
 
