@@ -1,16 +1,14 @@
-<h1 align="center">🐍 Basilisk</h1>
+# Basilisk — Open-Source AI Red Teaming Framework
+
+> **Basilisk** is an open-source AI red teaming and LLM security testing framework. It automates adversarial prompt testing against ChatGPT, Claude, Gemini, and any LLM API using genetic prompt evolution. Built for security researchers, penetration testers, and AI safety engineers who need to find vulnerabilities in AI systems before attackers do.
 
 <p align="center">
-  <strong>Open-Source AI/LLM Red Teaming Framework with Genetic Prompt Evolution</strong>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.3-red?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Python-3.11+-red?style=for-the-badge&logo=python" />
-  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/OWASP-LLM%20Top%2010-blue?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Modules-29-purple?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Desktop-Electron-cyan?style=for-the-badge&logo=electron" />
+  <img src="https://img.shields.io/badge/Version-1.0.3-red?style=for-the-badge" alt="Basilisk version 1.0.3" />
+  <img src="https://img.shields.io/badge/Python-3.11+-red?style=for-the-badge&logo=python" alt="Python 3.11+ required" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License open source" />
+  <img src="https://img.shields.io/badge/OWASP-LLM%20Top%2010-blue?style=for-the-badge" alt="OWASP LLM Top 10 coverage" />
+  <img src="https://img.shields.io/badge/Modules-29-purple?style=for-the-badge" alt="29 attack modules" />
+  <img src="https://img.shields.io/badge/Desktop-Electron-cyan?style=for-the-badge&logo=electron" alt="Electron desktop app" />
 </p>
 
 <p align="center">
@@ -22,9 +20,10 @@
 </p>
 
 <p align="center">
+  <a href="#what-is-basilisk">What is Basilisk?</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#features">Features</a> •
-  <a href="#whats-new-in-v100">What's New</a> •
+  <a href="#whats-new-in-v103">What's New</a> •
   <a href="#attack-modules">Attack Modules</a> •
   <a href="#desktop-app">Desktop App</a> •
   <a href="#ci-cd-integration">CI/CD</a> •
@@ -44,113 +43,53 @@
                     AI Red Teaming Framework v1.0.3
 ```
 
-**Basilisk** is a production-grade offensive security framework for red teaming AI and LLM applications. It combines comprehensive **OWASP LLM Top 10** attack coverage with a novel genetic algorithm engine — **Smart Prompt Evolution (SPE-NL)** — that evolves prompt payloads across generations to discover novel bypasses no static tool can find.
+## What is Basilisk?
 
-Built by **[Regaan](https://rothackers.com)** — independent security researcher, founder of **[Rot Hackers](https://rothackers.com)**, and creator of **[WSHawk](https://wshawk.rothackers.com)** (WebSocket security scanner) and **[PoCSmith](https://github.com/noobforanonymous)** (exploit PoC generator).
+**Basilisk** is a production-grade, open-source offensive security framework purpose-built for **AI red teaming** and **LLM penetration testing**. It is the first automated red teaming tool to combine full **OWASP LLM Top 10** attack coverage with a genetic algorithm engine called **Smart Prompt Evolution (SPE-NL)** that evolves adversarial prompt payloads across generations to discover novel AI vulnerabilities and jailbreaks that no static tool can find.
+
+Whether you are testing **OpenAI GPT-4o**, **Anthropic Claude**, **Google Gemini**, **Meta Llama**, or any custom LLM endpoint, Basilisk provides 29 attack modules, 5 recon modules, differential multi-model scanning, guardrail posture grading, and forensic audit logging out of the box.
+
+### Why Basilisk?
+
+- **Automated AI Red Teaming**: Stop manually copy-pasting jailbreak prompts. Basilisk evolves thousands of adversarial payloads automatically.
+- **Genetic Prompt Evolution**: The SPE-NL engine mutates, crosses over, and scores prompts like biological organisms, finding bypasses humans would never think of.
+- **Full OWASP LLM Top 10 Coverage**: 29 modules covering prompt injection, system prompt extraction, data exfiltration, tool abuse, guardrail bypass, denial of service, multi-turn manipulation, and RAG attacks.
+- **Works with Every LLM Provider**: OpenAI, Anthropic, Google, Azure, AWS Bedrock, Ollama, vLLM, and any custom HTTP/WebSocket endpoint.
+- **CI/CD Ready**: Native GitHub Action with SARIF output for automated AI security testing in your pipeline.
+- **Desktop App**: Full Electron GUI for visual red teaming with real-time scan dashboards.
+
+Built by **[Regaan](https://rothackers.com)**, independent security researcher, founder of **[Rot Hackers](https://rothackers.com)**, and creator of **[WSHawk](https://wshawk.rothackers.com)** (WebSocket security scanner).
 
 🌐 **Website:** [basilisk.rothackers.com](https://basilisk.rothackers.com)
-
----
-
-## What's New in v1.0.3
-
-### 🔬 Differential Mode
-
-Compare how different LLM providers respond to the same attacks side-by-side. Detects behavioral divergences where one model refuses but another complies — exposing provider-specific weaknesses.
-
-```bash
-basilisk diff -t openai:gpt-4o -t anthropic:claude-3-5-sonnet-20241022 -t google:gemini/gemini-2.0-flash
-```
-
-- 15 probes across 5 attack categories sent to all models concurrently
-- Real-time divergence detection with per-model resistance scoring
-- JSON diff report with vulnerable vs. resistant model breakdown
-
-### 🛡️ Guardrail Posture Scan
-
-Non-destructive recon-only security assessment. Produces an **A+ to F security grade** without running any active attacks. CISO-friendly and safe for production.
-
-```bash
-basilisk posture -p openai -m gpt-4o -v
-```
-
-- 8 guardrail categories probed (prompt injection, content filtering, data boundary, role manipulation, etc.)
-- Each category tested benign → moderate → adversarial
-- Strength classification: None, Weak, Moderate, Strong, Aggressive
-- Actionable recommendations for weak spots and over-filtering
-
-### 📋 Default Audit Logging
-
-Forensic-grade, tamper-evident audit trails are now **on by default** for every scan. Every prompt sent, response received, and finding discovered is logged with SHA-256 chain integrity.
-
-- JSONL format with checksummed entries
-- API keys automatically redacted
-- Disable with `BASILISK_AUDIT=0` environment variable
-- View in the desktop app's Audit tab or via `GET /api/audit/{session_id}`
-
-### ⚙️ CI/CD GitHub Action
-
-First-class GitHub Action for pipeline integration with SARIF baseline regression detection.
-
-```yaml
-- uses: noobforanonymous/basilisk@main
-  with:
-    target: 'https://api.yourapp.com/chat'
-    api-key: ${{ secrets.OPENAI_API_KEY }}
-    mode: 'quick'
-    fail-on: 'high'
-    output: 'sarif'
-    baseline: './baseline.sarif'
-```
-
-- Full scan or posture-only mode
-- Automatic SARIF upload to GitHub Security tab
-- Baseline regression detection (fails pipeline on new findings)
-- Report artifacts uploaded automatically
-
-### 🖥️ Desktop App Enhancements
-
-Three new tabs added to the Electron desktop application:
-
-- **Diff** — multi-model comparison with dynamic target input
-- **Posture** — guardrail assessment with live grade display
-- **Audit** — session audit trail viewer with integrity verification
-
-### 📂 GitHub Community Files
-
-- `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1 with responsible security tooling section
-- `CONTRIBUTING.md` — development setup, PR process, coding standards, module creation guide
-- `SECURITY.md` — vulnerability disclosure policy with SLAs
-- `.github/PULL_REQUEST_TEMPLATE.md` — OWASP-mapped PR template
 
 ---
 
 ## Quick Start
 
 ```bash
-# Install from PyPI
+# Install Basilisk from PyPI
 pip install basilisk-ai
 
-# Full red team scan against an OpenAI chatbot
+# Full AI red team scan against an OpenAI chatbot
 export OPENAI_API_KEY="sk-..."
 basilisk scan -t https://api.target.com/chat -p openai
 
 # Quick scan — top payloads, no evolution
 basilisk scan -t https://api.target.com/chat --mode quick
 
-# Deep scan — 10 generations of evolution
+# Deep scan — 10 generations of genetic prompt evolution
 basilisk scan -t https://api.target.com/chat --mode deep --generations 10
 
 # Stealth mode — rate-limited, human-like timing
 basilisk scan -t https://api.target.com/chat --mode stealth
 
-# Recon only — fingerprint the target
+# Recon only — fingerprint the target LLM
 basilisk recon -t https://api.target.com/chat -p openai
 
-# Guardrail posture check (no attacks)
+# Guardrail posture check (no attacks, safe for production)
 basilisk posture -p openai -m gpt-4o -v
 
-# Differential scan across providers
+# Differential scan across AI providers
 basilisk diff -t openai:gpt-4o -t anthropic:claude-3-5-sonnet-20241022
 
 # Use GitHub Models (FREE — no API key purchase required!)
@@ -257,6 +196,79 @@ Performance-critical operations compiled to native code:
 
 ---
 
+## What's New in v1.0.3
+
+### 🔬 Differential Mode
+
+Compare how different LLM providers respond to the same attacks side-by-side. Detects behavioral divergences where one model refuses but another complies, exposing provider-specific weaknesses.
+
+```bash
+basilisk diff -t openai:gpt-4o -t anthropic:claude-3-5-sonnet-20241022 -t google:gemini/gemini-2.0-flash
+```
+
+- 15 probes across 5 attack categories sent to all models concurrently
+- Real-time divergence detection with per-model resistance scoring
+- JSON diff report with vulnerable vs. resistant model breakdown
+
+### 🛡️ Guardrail Posture Scan
+
+Non-destructive recon-only security assessment. Produces an **A+ to F security grade** without running any active attacks. CISO-friendly and safe for production.
+
+```bash
+basilisk posture -p openai -m gpt-4o -v
+```
+
+- 8 guardrail categories probed (prompt injection, content filtering, data boundary, role manipulation, etc.)
+- Each category tested benign → moderate → adversarial
+- Strength classification: None, Weak, Moderate, Strong, Aggressive
+- Actionable recommendations for weak spots and over-filtering
+
+### 📋 Default Audit Logging
+
+Forensic-grade, tamper-evident audit trails are now **on by default** for every scan. Every prompt sent, response received, and finding discovered is logged with SHA-256 chain integrity.
+
+- JSONL format with checksummed entries
+- API keys automatically redacted
+- Disable with `BASILISK_AUDIT=0` environment variable
+- View in the desktop app's Audit tab or via `GET /api/audit/{session_id}`
+
+### ⚙️ CI/CD GitHub Action
+
+First-class GitHub Action for pipeline integration with SARIF baseline regression detection.
+
+```yaml
+- uses: noobforanonymous/basilisk@main
+  with:
+    target: 'https://api.yourapp.com/chat'
+    api-key: ${{ secrets.OPENAI_API_KEY }}
+    mode: 'quick'
+    fail-on: 'high'
+    output: 'sarif'
+    baseline: './baseline.sarif'
+```
+
+- Full scan or posture-only mode
+- Automatic SARIF upload to GitHub Security tab
+- Baseline regression detection (fails pipeline on new findings)
+- Report artifacts uploaded automatically
+
+### 🖥️ Desktop App Enhancements
+
+Three new tabs added to the Electron desktop application:
+
+- **Diff** — multi-model comparison with dynamic target input
+- **Posture** — guardrail assessment with live grade display
+- **Audit** — session audit trail viewer with integrity verification
+
+### 📂 GitHub Community Files
+
+- `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1 with responsible security tooling section
+- `CONTRIBUTING.md` — development setup, PR process, coding standards, module creation guide
+- `SECURITY.md` — vulnerability disclosure policy with SLAs
+- `.github/PULL_REQUEST_TEMPLATE.md` — OWASP-mapped PR template
+
+---
+
 ## Attack Modules
 
 | Category | Modules | OWASP | Description |
@@ -287,9 +299,9 @@ Performance-critical operations compiled to native code:
 ## CLI Reference
 
 ```bash
-basilisk scan            # Full red team scan
-basilisk recon           # Fingerprint target only
-basilisk diff            # Differential scan across models (NEW)
+basilisk scan            # Full AI red team scan
+basilisk recon           # Fingerprint target LLM
+basilisk diff            # Differential scan across AI models (NEW)
 basilisk posture         # Guardrail posture assessment (NEW)
 basilisk replay <id>     # Replay a saved session
 basilisk interactive     # Manual REPL with assisted attacks
@@ -424,7 +436,7 @@ ai-security:
 
 ## Desktop App
 
-The Electron desktop app provides a full GUI experience:
+The Electron desktop app provides a full GUI experience for AI red teaming:
 
 ```bash
 cd desktop
@@ -488,9 +500,28 @@ action.yml         # GitHub Action for CI/CD (NEW)
 
 ---
 
+## Frequently Asked Questions
+
+### What is Basilisk used for?
+Basilisk is used for automated AI red teaming and LLM security testing. It finds vulnerabilities like prompt injection, jailbreaks, data leakage, and guardrail bypasses in AI applications powered by GPT-4, Claude, Gemini, Llama, and other large language models.
+
+### How is Basilisk different from other AI security tools?
+Basilisk is the only open-source tool that uses **genetic prompt evolution** to automatically discover new attack vectors. Instead of relying on a static list of known jailbreaks, it evolves adversarial prompts across generations, finding bypasses that no human or static fuzzer would discover.
+
+### Does Basilisk work with local models?
+Yes. Basilisk supports Ollama, vLLM, llama.cpp, and any custom HTTP or WebSocket endpoint. You can red team your self-hosted Llama, Mistral, or any open-weight model.
+
+### Is Basilisk free?
+Yes. Basilisk is fully open-source under the MIT license with zero restrictions on commercial or private use.
+
+### Can I use Basilisk in CI/CD pipelines?
+Yes. Basilisk ships with a native GitHub Action and SARIF report output, making it easy to integrate automated AI security scanning into your CI/CD workflow with baseline regression detection.
+
+---
+
 ## About the Creator
 
-**Basilisk** is built by **[Regaan](https://rothackers.com)** — an independent security researcher and the founder of **[Rot Hackers](https://rothackers.com)**. Every tool under the Rot Hackers banner is built solo, from architecture to deployment.
+**Basilisk** is built by **[Regaan](https://rothackers.com)**, an independent security researcher and the founder of **[Rot Hackers](https://rothackers.com)**. Every tool under the Rot Hackers banner is built solo, from architecture to deployment.
 
 Other projects by Regaan:
 - **[WSHawk](https://wshawk.rothackers.com)** — Enterprise-grade WebSocket security scanner and web pentest toolkit
