@@ -6,7 +6,8 @@
   <img src="https://img.shields.io/badge/Version-1.0.6-red?style=for-the-badge" alt="Basilisk version 1.0.6" />
   <img src="https://img.shields.io/badge/Status-BETA-orange?style=for-the-badge" alt="Project Status: Beta" />
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue?style=for-the-badge" alt="License: AGPL-3.0" />
-  <a href="https://doi.org/10.5281/zenodo.18909538"><img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18909538-blue?style=for-the-badge" alt="DOI"></a>
+   <a href="https://doi.org/10.5281/zenodo.18909538"><img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18909538-blue?style=for-the-badge" alt="Zenodo DOI"></a>
+  <a href="https://doi.org/10.6084/m9.figshare.31566853"><img src="https://img.shields.io/badge/Mirror-10.6084%2Fm9.figshare.31566853-emerald?style=for-the-badge" alt="Figshare DOI"></a>
   <img src="https://img.shields.io/badge/Adoption-110+_Active_Users-blueviolet?style=for-the-badge&logo=github" alt="Adoption: 110+ Users" />
 </p>
 
@@ -592,7 +593,9 @@ If you use Basilisk in your research or wish to cite the framework, please use t
 }
 ```
 
-Full research paper archived at: [https://doi.org/10.5281/zenodo.18909538](https://doi.org/10.5281/zenodo.18909538)
+Full research paper archived at:
+- **Zenodo**: [https://doi.org/10.5281/zenodo.18909538](https://doi.org/10.5281/zenodo.18909538)
+- **Figshare (Mirror)**: [https://doi.org/10.6084/m9.figshare.31566853](https://doi.org/10.6084/m9.figshare.31566853)
 
 ## Legal
 
