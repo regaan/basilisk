@@ -14,6 +14,6 @@ Welcome to the Basilisk documentation — the AI Red Teaming Framework by Rot Ha
 
 ## Quick Links
 
-- **Repository:** [github.com/noobforanonymous/basilisk](https://github.com/noobforanonymous/basilisk)
+- **Repository:** [github.com/regaan/basilisk](https://github.com/regaan/basilisk)
 - **Website:** [basilisk.rothackers.com](https://basilisk.rothackers.com)
 - **OWASP LLM Top 10:** [owasp.org](https://owasp.org/www-project-top-10-for-large-language-model-applications/)

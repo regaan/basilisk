@@ -83,5 +83,5 @@ We maintain a list of security researchers who have responsibly disclosed vulner
 ## Contact
 
 - **Email**: support@rothackers.com
-- **GitHub**: [@noobforanonymous](https://github.com/noobforanonymous)
+- **GitHub**: [@regaan](https://github.com/regaan)
 - **Website**: [basilisk.rothackers.com](https://basilisk.rothackers.com)

@@ -9,7 +9,7 @@ pip install basilisk-ai
 
 ### From Source
 ```bash
-git clone https://github.com/noobforanonymous/basilisk.git
+git clone https://github.com/regaan/basilisk.git
 cd basilisk
 python -m venv venv
 source venv/bin/activate  # Linux/macOS

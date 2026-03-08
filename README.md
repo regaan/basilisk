@@ -32,10 +32,10 @@
 *   **Forensic Audit Reports**: Export findings in HTML, JSON, and SARIF formats.
 
 <p align="center">
-  <a href="https://github.com/noobforanonymous/basilisk/actions/workflows/build.yml"><img src="https://github.com/noobforanonymous/basilisk/actions/workflows/build.yml/badge.svg" alt="Build Desktop" /></a>
-  <a href="https://github.com/noobforanonymous/basilisk/actions/workflows/docker-build.yml"><img src="https://github.com/noobforanonymous/basilisk/actions/workflows/docker-build.yml/badge.svg" alt="Docker" /></a>
-  <a href="https://github.com/noobforanonymous/basilisk/actions/workflows/python-publish.yml"><img src="https://github.com/noobforanonymous/basilisk/actions/workflows/python-publish.yml/badge.svg" alt="PyPI" /></a>
-  <a href="https://github.com/noobforanonymous/basilisk/actions/workflows/test-action.yml"><img src="https://github.com/noobforanonymous/basilisk/actions/workflows/test-action.yml/badge.svg" alt="Test Action" /></a>
+  <a href="https://github.com/regaan/basilisk/actions/workflows/build.yml"><img src="https://github.com/regaan/basilisk/actions/workflows/build.yml/badge.svg" alt="Build Desktop" /></a>
+  <a href="https://github.com/regaan/basilisk/actions/workflows/docker-build.yml"><img src="https://github.com/regaan/basilisk/actions/workflows/docker-build.yml/badge.svg" alt="Docker" /></a>
+  <a href="https://github.com/regaan/basilisk/actions/workflows/python-publish.yml"><img src="https://github.com/regaan/basilisk/actions/workflows/python-publish.yml/badge.svg" alt="PyPI" /></a>
+  <a href="https://github.com/regaan/basilisk/actions/workflows/test-action.yml"><img src="https://github.com/regaan/basilisk/actions/workflows/test-action.yml/badge.svg" alt="Test Action" /></a>
   <a href="https://github.com/marketplace/actions/basilisk-ai-security-scan"><img src="https://img.shields.io/badge/Marketplace-Action-blue?logo=github" alt="GitHub Marketplace" /></a>
 </p>
 
@@ -285,7 +285,7 @@ Forensic-grade, tamper-evident audit trails are now **on by default** for every 
 First-class GitHub Action for pipeline integration with SARIF baseline regression detection.
 
 ```yaml
-- uses: noobforanonymous/basilisk@main
+- uses: regaan/basilisk@main
   with:
     target: 'https://api.yourapp.com/chat'
     api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -412,7 +412,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Basilisk AI Security Scan
-        uses: noobforanonymous/basilisk@main
+        uses: regaan/basilisk@main
         with:
           target: ${{ secrets.TARGET_URL }}
           api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -430,7 +430,7 @@ jobs:
 
 ```yaml
       - name: Basilisk AI Security Scan (Free via GitHub Models)
-        uses: noobforanonymous/basilisk@main
+        uses: regaan/basilisk@main
         with:
           target: ${{ secrets.TARGET_URL }}
           provider: github

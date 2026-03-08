@@ -36,7 +36,7 @@ Thank you for considering contributing to Basilisk! This document outlines how t
 
 ```bash
 # Clone the repository
-git clone https://github.com/noobforanonymous/basilisk.git
+git clone https://github.com/regaan/basilisk.git
 cd basilisk
 
 # Create virtual environment
@@ -165,7 +165,7 @@ Each module should:
 
 ## Reporting Bugs
 
-Use the [Bug Report template](https://github.com/noobforanonymous/basilisk/issues/new?template=bug_report.md) and include:
+Use the [Bug Report template](https://github.com/regaan/basilisk/issues/new?template=bug_report.md) and include:
 
 - Basilisk version (`basilisk --version`)
 - Python version
@@ -188,7 +188,7 @@ By contributing to Basilisk, you agree that your contributions will be licensed 
 
 ## Questions?
 
-- Open a [Discussion](https://github.com/noobforanonymous/basilisk/discussions) on GitHub
+- Open a [Discussion](https://github.com/regaan/basilisk/discussions) on GitHub
 - Email us at **support@rothackers.com**
 
 Thank you for helping make AI systems more secure. 🐍

@@ -61,8 +61,8 @@ pdf = [
 [project.urls]
 Homepage = "https://basilisk.rothackers.com"
 Documentation = "https://basilisk.rothackers.com/docs"
-Repository = "https://github.com/noobforanonymous/basilisk"
-Issues = "https://github.com/noobforanonymous/basilisk/issues"
+Repository = "https://github.com/regaan/basilisk"
+Issues = "https://github.com/regaan/basilisk/issues"
 
 [project.scripts]
 basilisk = "basilisk.cli.main:cli"

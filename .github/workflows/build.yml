@@ -180,7 +180,7 @@ jobs:
             docker run --rm rothackers/basilisk scan --help
             ```
 
-            **Full Changelog**: https://github.com/noobforanonymous/basilisk/compare/.../${{ github.ref_name }}
+            **Full Changelog**: https://github.com/regaan/basilisk/compare/.../${{ github.ref_name }}
           files: |
             artifacts/**/*.exe
             artifacts/**/*.dmg
