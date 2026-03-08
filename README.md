@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Version-1.0.6-red?style=for-the-badge" alt="Basilisk version 1.0.6" />
   <img src="https://img.shields.io/badge/Status-BETA-orange?style=for-the-badge" alt="Project Status: Beta" />
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue?style=for-the-badge" alt="License: AGPL-3.0" />
-  <a href="https://doi.org/10.5281/zenodo.18909538"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.18909538.svg" alt="DOI"></a>
+  <a href="https://doi.org/10.5281/zenodo.18909538"><img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18909538-blue?style=for-the-badge" alt="DOI"></a>
   <img src="https://img.shields.io/badge/Adoption-110+_Active_Users-blueviolet?style=for-the-badge&logo=github" alt="Adoption: 110+ Users" />
 </p>
 
