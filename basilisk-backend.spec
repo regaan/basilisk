@@ -18,7 +18,7 @@
 
 from PyInstaller.utils.hooks import collect_data_files
 
-all_datas = collect_data_files('certifi') + [
+all_datas = collect_data_files('certifi') + collect_data_files('litellm') + [
     # Payload YAML database
     ('basilisk/payloads', 'basilisk/payloads'),
     # Jinja2 report templates
