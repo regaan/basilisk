@@ -34,7 +34,8 @@
         "electron-builder": "^24.9.1"
     },
     "dependencies": {
-        "electron-store": "^8.1.0"
+        "electron-store": "^8.1.0",
+        "electron-updater": "^6.3.9"
     },
     "build": {
         "appId": "com.rothackers.basilisk",
@@ -55,7 +56,8 @@
         },
         "win": {
             "target": "nsis",
-            "icon": "build/icon.ico"
+            "icon": "build/icon.ico",
+            "publisherName": "Rot Hackers"
         },
         "mac": {
             "target": "dmg",
@@ -65,9 +67,15 @@
         "nsis": {
             "oneClick": false,
             "allowToChangeInstallationDirectory": true,
+            "allowElevation": true,
             "createDesktopShortcut": true,
             "createStartMenuShortcut": true,
             "license": "LICENSE.txt"
+        },
+        "publish": {
+            "provider": "github",
+            "owner": "regaan",
+            "repo": "basilisk"
         },
         "pacman": {
             "depends": [

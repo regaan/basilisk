@@ -35,6 +35,19 @@
         </div>
     </div>
 
+    <!-- ── UPDATE BANNER ── -->
+    <div id="update-banner" class="update-banner hidden">
+        <div class="update-banner-content">
+            <span id="update-banner-text">A new version is available</span>
+            <div class="update-banner-actions">
+                <button class="btn sm" id="btn-update-download" style="display:none">Download</button>
+                <button class="btn sm" id="btn-update-install" style="display:none">Restart &amp; Update</button>
+                <button class="btn ghost sm" id="btn-update-dismiss">✕</button>
+            </div>
+        </div>
+        <div id="update-progress-bar" class="update-progress-bar" style="display:none"><div id="update-progress-fill" class="update-progress-fill"></div></div>
+    </div>
+
     <!-- ── SHELL ── -->
     <div class="shell">
 
@@ -684,6 +697,14 @@
                                 <div class="native-val fb" id="ns-encoder">…</div>
                             </div>
                         </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3>Updates</h3>
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                            <span style="font-size:12px;color:var(--text-2)">Current: <strong style="color:var(--text-1)">v1.0.8</strong></span>
+                            <span id="update-status" style="font-size:11px;color:var(--text-3)"></span>
+                        </div>
+                        <button class="btn ghost sm" id="btn-check-update">Check for Updates</button>
                     </div>
                 </div>
             </div>

@@ -4,6 +4,7 @@ const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const crypto = require('crypto');
 const http = require('http');
+const { autoUpdater } = require('electron-updater');
 
 // Generate a random token for backend authentication
 const BASILISK_TOKEN = crypto.randomBytes(32).toString('hex');
@@ -227,6 +228,7 @@ app.whenReady().then(() => {
     cleanupPort(bridgePort);
     startBackend();
     createWindow();
+    setupAutoUpdater();
 
     // ── IPC: Dialog Handlers ─────────────────────────────────────────────
     ipcMain.handle('dialog:exportReport', async (event, htmlContent) => {
@@ -312,6 +314,95 @@ app.whenReady().then(() => {
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+});
+
+/**
+ * Auto-updater: checks GitHub Releases for new versions on startup.
+ * Events are forwarded to renderer for in-app notifications.
+ */
+function setupAutoUpdater() {
+    // Don't check for updates in dev mode
+    if (!app.isPackaged) {
+        console.log('[Updater] Skipping update check in dev mode');
+        return;
+    }
+
+    autoUpdater.autoDownload = false;  // Ask user before downloading
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('checking-for-update', () => {
+        console.log('[Updater] Checking for updates...');
+        sendToRenderer('update:checking');
+    });
+
+    autoUpdater.on('update-available', (info) => {
+        console.log(`[Updater] Update available: v${info.version}`);
+        sendToRenderer('update:available', {
+            version: info.version,
+            releaseDate: info.releaseDate,
+            releaseNotes: info.releaseNotes,
+        });
+    });
+
+    autoUpdater.on('update-not-available', (info) => {
+        console.log(`[Updater] Already on latest: v${info.version}`);
+        sendToRenderer('update:not-available', { version: info.version });
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+        sendToRenderer('update:progress', {
+            percent: Math.round(progress.percent),
+            transferred: progress.transferred,
+            total: progress.total,
+            bytesPerSecond: progress.bytesPerSecond,
+        });
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+        console.log(`[Updater] Update downloaded: v${info.version}`);
+        sendToRenderer('update:downloaded', { version: info.version });
+    });
+
+    autoUpdater.on('error', (err) => {
+        console.error(`[Updater] Error: ${err.message}`);
+        sendToRenderer('update:error', { error: err.message });
+    });
+
+    // Check after a short delay to not block startup
+    setTimeout(() => {
+        autoUpdater.checkForUpdates().catch(err => {
+            console.error(`[Updater] Check failed: ${err.message}`);
+        });
+    }, 3000);
+}
+
+function sendToRenderer(channel, data) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(channel, data);
+    }
+}
+
+// IPC: Update controls
+ipcMain.handle('update:check', async () => {
+    try {
+        const result = await autoUpdater.checkForUpdates();
+        return { success: true, version: result?.updateInfo?.version };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('update:download', async () => {
+    try {
+        await autoUpdater.downloadUpdate();
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('update:install', () => {
+    autoUpdater.quitAndInstall(false, true);
 });
 
 app.on('window-all-closed', () => {

@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('basilisk', {
         const allowed = [
             'dialog:exportReport', 'dialog:saveFile', 'window:getToken', 'window:getPort',
             'backend:multiturnModules', 'backend:evolutionOperators', 'backend:moduleList',
-            'shell:openExternal',
+            'shell:openExternal', 'update:check', 'update:download', 'update:install',
         ];
         if (allowed.includes(channel)) return ipcRenderer.invoke(channel, ...args);
         return Promise.reject(new Error(`IPC channel not allowed: ${channel}`));
@@ -83,6 +83,19 @@ contextBridge.exposeInMainWorld('basilisk', {
 
     // Open external URL safely
     openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+
+    // Update controls
+    update: {
+        check: () => ipcRenderer.invoke('update:check'),
+        download: () => ipcRenderer.invoke('update:download'),
+        install: () => ipcRenderer.invoke('update:install'),
+        onAvailable: (cb) => ipcRenderer.on('update:available', (_, data) => cb(data)),
+        onNotAvailable: (cb) => ipcRenderer.on('update:not-available', (_, data) => cb(data)),
+        onProgress: (cb) => ipcRenderer.on('update:progress', (_, data) => cb(data)),
+        onDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_, data) => cb(data)),
+        onError: (cb) => ipcRenderer.on('update:error', (_, data) => cb(data)),
+        onChecking: (cb) => ipcRenderer.on('update:checking', () => cb()),
+    },
 });
 
 // Also expose as window.api for compatibility

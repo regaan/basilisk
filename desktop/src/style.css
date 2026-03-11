@@ -1222,3 +1222,62 @@ body {
 .toast.inf .toast-icon {
     color: var(--accent);
 }
+
+/* ─── UPDATE BANNER ─── */
+.update-banner {
+    background: linear-gradient(90deg, rgba(129, 140, 248, 0.08), rgba(52, 211, 153, 0.06));
+    border-bottom: 1px solid var(--border);
+    padding: 6px 16px;
+    font-size: 12px;
+    z-index: 99;
+    animation: fadeSlide .2s ease forwards;
+}
+
+.update-banner.hidden {
+    display: none;
+}
+
+.update-banner-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+#update-banner-text {
+    color: var(--text-1);
+    font-weight: 500;
+}
+
+.update-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.update-banner-actions .btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+}
+
+.update-banner-actions .btn.ghost {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-2);
+}
+
+.update-progress-bar {
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+
+.update-progress-fill {
+    height: 100%;
+    width: 0;
+    background: var(--accent);
+    transition: width .3s ease;
+}
