@@ -7,12 +7,15 @@ and any other litellm-supported provider through a single interface.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, AsyncIterator
 
 import litellm
 
 from basilisk.providers.base import ProviderAdapter, ProviderMessage, ProviderResponse
+
+logger = logging.getLogger("basilisk.providers.litellm")
 
 # Suppress litellm's verbose logging
 litellm.suppress_debug_info = True
@@ -68,16 +71,8 @@ class LiteLLMAdapter(ProviderAdapter):
         return self._default_model
 
     def _infer_default_model(self, provider: str) -> str:
-        defaults = {
-            "openai": "gpt-4",
-            "anthropic": "claude-3-5-sonnet-20241022",
-            "google": "gemini/gemini-2.0-flash",
-            "azure": "azure/gpt-4",
-            "ollama": "ollama/llama3.1",
-            "bedrock": "bedrock/anthropic.claude-3-sonnet",
-            "github": "gpt-4o-mini",
-        }
-        return defaults.get(provider, "gpt-4")
+        from basilisk.core.models import DEFAULT_MODELS
+        return DEFAULT_MODELS.get(provider, "gpt-4")
 
     def _build_messages(self, messages: list[ProviderMessage]) -> list[dict[str, Any]]:
         formatted = []
@@ -197,7 +192,8 @@ class LiteLLMAdapter(ProviderAdapter):
                 if delta and delta.content:
                     yield delta.content
         except Exception as e:
-            yield f"[ERROR] {e}"
+            logger.warning(f"Streaming error: {e}")
+            return
 
     async def send_with_tools(
         self,

@@ -7,12 +7,15 @@ Pairs naturally with WSHawk for WebSocket AI application red teaming.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import Any, AsyncIterator
 
 import websockets
 
 from basilisk.providers.base import ProviderAdapter, ProviderMessage, ProviderResponse
+
+logger = logging.getLogger("basilisk.providers.websocket")
 
 
 class WebSocketAdapter(ProviderAdapter):
@@ -153,7 +156,8 @@ class WebSocketAdapter(ProviderAdapter):
                 except (json.JSONDecodeError, TypeError):
                     pass
         except Exception as e:
-            yield f"[ERROR] {e}"
+            logger.warning(f"Streaming error: {e}")
+            return
 
     async def close(self) -> None:
         """Close the WebSocket connection."""

@@ -372,15 +372,9 @@ def detect_refusal(text: str) -> float:
     _ensure_loaded()
     if _matcher_lib:
         return _matcher_lib.BasiliskDetectRefusal(text.encode("utf-8"))
-    # Python fallback
-    refusal_phrases = [
-        "i can't", "i cannot", "i'm not able", "i won't",
-        "as an ai", "as a language model", "my guidelines",
-        "content policy", "safety guidelines",
-    ]
-    lower = text.lower()
-    hits = sum(1 for p in refusal_phrases if p in lower)
-    return min(1.0, hits * 0.2)
+    # Python fallback — use canonical refusal module
+    from basilisk.core.refusal import refusal_confidence
+    return refusal_confidence(text)
 
 
 def detect_sensitive_data(text: str) -> str:

@@ -98,8 +98,19 @@ contextBridge.exposeInMainWorld('basilisk', {
     },
 });
 
-// Also expose as window.api for compatibility
+// Also expose as window.api for compatibility — with same channel restrictions
 contextBridge.exposeInMainWorld('api', {
-    send: (channel, ...args) => ipcRenderer.send(channel, ...args),
-    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+    send: (channel, ...args) => {
+        const allowed = ['window:minimize', 'window:maximize', 'window:close'];
+        if (allowed.includes(channel)) ipcRenderer.send(channel, ...args);
+    },
+    invoke: (channel, ...args) => {
+        const allowed = [
+            'dialog:exportReport', 'dialog:saveFile', 'window:getToken', 'window:getPort',
+            'backend:multiturnModules', 'backend:evolutionOperators', 'backend:moduleList',
+            'shell:openExternal', 'update:check', 'update:download', 'update:install',
+        ];
+        if (allowed.includes(channel)) return ipcRenderer.invoke(channel, ...args);
+        return Promise.reject(new Error(`IPC channel not allowed: ${channel}`));
+    },
 });

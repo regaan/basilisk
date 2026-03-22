@@ -127,7 +127,7 @@
                     <div class="pane">
                         <div class="pane-head"><span class="pane-title">Engine Telemetry</span></div>
                         <div class="pane-body terminal" id="sys-log">
-                            <div class="ll dim">[boot] Basilisk AI Red Teaming v1.0.8</div>
+                            <div class="ll dim">[boot] Basilisk AI Red Teaming v1.1.0</div>
                             <div class="ll dim">[boot] Checking native extensions…</div>
                             <div class="ll inf">[init] Waiting for backend connection.</div>
                         </div>
@@ -155,6 +155,8 @@
                                     <option value="anthropic">Anthropic</option>
                                     <option value="google">Google AI</option>
                                     <option value="azure">Azure OpenAI</option>
+                                    <option value="xai">xAI (Grok)</option>
+                                    <option value="groq">Groq (Fast)</option>
                                     <option value="github">GitHub Models (Free)</option>
                                     <option value="ollama">Ollama (Local)</option>
                                     <option value="custom">Custom HTTP</option>
@@ -234,7 +236,9 @@
                                             <option value="anthropic">Anthropic</option>
                                             <option value="google">Google AI</option>
                                             <option value="github">GitHub Models (Free)</option>
+                                            <option value="xai">xAI (Grok)</option>
                                             <option value="azure">Azure OpenAI</option>
+                                            <option value="groq">Groq (Fast)</option>
                                         </select>
                                     </div>
                                     <div class="field">
@@ -676,6 +680,16 @@
                                     placeholder="ghp_… (free via github.com/marketplace/models)"></div><button
                                 class="btn ghost sm" onclick="saveKey('github')">Save</button>
                         </div>
+                        <div class="apikey-row">
+                            <div class="field"><label class="field-label">xAI (Grok)</label><input class="inp"
+                                    id="key-xai" type="password" placeholder="xai-…"></div><button
+                                class="btn ghost sm" onclick="saveKey('xai')">Save</button>
+                        </div>
+                        <div class="apikey-row">
+                            <div class="field"><label class="field-label">Groq</label><input class="inp"
+                                    id="key-groq" type="password" placeholder="gsk_…"></div><button
+                                class="btn ghost sm" onclick="saveKey('groq')">Save</button>
+                        </div>
                     </div>
                     <div class="settings-section">
                         <h3>Native Extensions</h3>
@@ -701,7 +715,7 @@
                     <div class="settings-section">
                         <h3>Updates</h3>
                         <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                            <span style="font-size:12px;color:var(--text-2)">Current: <strong style="color:var(--text-1)">v1.0.8</strong></span>
+                            <span style="font-size:12px;color:var(--text-2)">Current: <strong style="color:var(--text-1)">v1.1.0</strong></span>
                             <span id="update-status" style="font-size:11px;color:var(--text-3)"></span>
                         </div>
                         <button class="btn ghost sm" id="btn-check-update">Check for Updates</button>
@@ -715,7 +729,7 @@
                     <div class="pane-head"><span class="pane-title">Full System Log</span><button class="btn ghost sm"
                             id="btn-clear-log">Clear</button></div>
                     <div class="pane-body terminal" id="full-log">
-                        <div class="ll dim">[system] Basilisk v1.0.8</div>
+                        <div class="ll dim">[system] Basilisk v1.1.0</div>
                     </div>
                 </div>
             </div>
@@ -744,14 +758,27 @@
 
         <!-- FOOTER -->
         <div class="app-footer">
-            <span>Basilisk v1.0.8 — AI Red Teaming Framework</span>
+            <span>Basilisk v1.1.0 — AI Red Teaming Framework</span>
             <span>Built by <a href="https://regaan.rothackers.com" target="_blank">Regaan</a> · Rot Hackers</span>
         </div>
 
     </div><!-- /shell -->
 
     <div id="toast-container"></div>
-    <script src="renderer.js"></script>
+    <!-- Modules loaded in dependency order -->
+    <script src="core.js"></script>
+    <script src="scan.js"></script>
+    <script src="modules.js"></script>
+    <script src="sessions.js"></script>
+    <script src="advanced.js"></script>
+    <script src="updates.js"></script>
+    <script>
+        // ── Init ──
+        loadModules();
+        loadMultiturnModules();
+        loadEvolutionOperators();
+        log('inf', 'Basilisk Desktop initialized.');
+    </script>
 </body>
 
 </html>

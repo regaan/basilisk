@@ -94,6 +94,7 @@ extern char* BasiliskMatcherSearch(int id, char* text);
 extern void BasiliskMatcherDestroy(int id);
 extern double BasiliskDetectRefusal(char* text);
 extern char* BasiliskDetectSensitiveData(char* text);
+extern double BasiliskDetectCompliance(char* text);
 extern void BasiliskFreeStr(char* s);
 
 #ifdef __cplusplus

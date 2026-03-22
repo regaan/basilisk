@@ -7,12 +7,15 @@ Supports any HTTP-based AI service with configurable request/response mapping.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import Any, AsyncIterator
 
 import httpx
 
 from basilisk.providers.base import ProviderAdapter, ProviderMessage, ProviderResponse
+
+logger = logging.getLogger("basilisk.providers.http")
 
 
 class CustomHTTPAdapter(ProviderAdapter):
@@ -163,7 +166,8 @@ class CustomHTTPAdapter(ProviderAdapter):
                         except json.JSONDecodeError:
                             continue
         except Exception as e:
-            yield f"[ERROR] {e}"
+            logger.warning(f"Streaming error: {e}")
+            return
 
     async def close(self) -> None:
         """Close the HTTP client."""

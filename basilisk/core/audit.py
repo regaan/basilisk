@@ -54,7 +54,11 @@ class AuditLogger:
         self._audit_secret = os.environ.get("BASILISK_AUDIT_SECRET")
         if not self._audit_secret and self.enabled:
             self._audit_secret = secrets.token_hex(32)
-            logger.info(f"Audit Log Secret: {self._audit_secret} (Save this to verify integrity later)")
+            logger.warning(
+                "No BASILISK_AUDIT_SECRET set — generated a random one for this session. "
+                "Save this to verify audit log integrity later: %s",
+                self._audit_secret,
+            )
         
         self._last_checksum = "0" * 64
         self._entry_count = 0

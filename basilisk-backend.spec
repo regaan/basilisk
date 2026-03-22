@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Basilisk v1.0.8 — PyInstaller spec for the desktop backend sidecar binary.
+# Basilisk v1.1.0 — PyInstaller spec for the desktop backend sidecar binary.
 # Bundles the full backend: core engine, attack modules (8 categories, 32 sub-modules),
 # evolution engine (SPE-NL), providers, recon, payloads, reports, CLI, and all deps.
 #
@@ -48,6 +48,7 @@ a = Analysis(
         'basilisk.core.profile',
         'basilisk.core.session',
         'basilisk.core.refusal',
+        'basilisk.core.models',
 
         # ── New v1.0.3 Modules ──
         'basilisk.core.audit',
@@ -149,6 +150,8 @@ a = Analysis(
         'litellm',
         'litellm.main',
         'litellm.utils',
+        'openai',
+        'httpx',
 
         # ── Third-party libraries PyInstaller may miss ──
         'uvicorn',

@@ -60,6 +60,8 @@ class TargetConfig:
             "anthropic": "ANTHROPIC_API_KEY",
             "google": "GOOGLE_API_KEY",
             "azure": "AZURE_API_KEY",
+            "xai": "XAI_API_KEY",
+            'groq': 'GROQ_API_KEY',
         }
         env_var = env_mapping.get(self.provider, "BASILISK_API_KEY")
         return os.environ.get(env_var, "")

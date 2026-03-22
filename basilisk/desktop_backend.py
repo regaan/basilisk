@@ -51,6 +51,13 @@ active_scans: dict[str, dict] = {}
 scan_results: dict[str, dict] = {}
 ws_clients: list[WebSocket] = []
 
+# Concurrency locks for shared mutable state
+_ws_lock = asyncio.Lock()
+_scan_lock = asyncio.Lock()
+
+# Secure in-memory API key store (not in os.environ)
+_api_key_store: dict[str, str] = {}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -68,16 +75,25 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Basilisk Desktop Backend",
-    version="1.0.8",
+    version="1.1.0",
     docs_url="/docs" if os.environ.get("BASILISK_DEBUG") else None,
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "http://127.0.0.1:8741",
+        "http://localhost:8741",
+        "null",  # Electron file:// pages send Origin: null
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Basilisk-Token"
+    ]
 )
 
 
@@ -118,7 +134,7 @@ class ReportRequest(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "1.0.8", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"status": "online", "version": "1.1.0", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @app.get("/api/native/status", dependencies=[Depends(verify_token)])
@@ -418,19 +434,28 @@ class ApiKeyRequest(BaseModel):
     provider: str
     key: str
 
+# Provider name → environment variable mapping
+_PROVIDER_ENV_MAP = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "azure": "AZURE_API_KEY",
+    "github": "GH_MODELS_TOKEN",
+}
+
+
+def _get_api_key(provider: str) -> str:
+    """Get API key from in-memory store, falling back to os.environ."""
+    env_var = _PROVIDER_ENV_MAP.get(provider, "")
+    return _api_key_store.get(env_var, "") or os.environ.get(env_var, "")
+
+
 @app.post("/api/settings/apikey", dependencies=[Depends(verify_token)])
 async def save_api_key(req: ApiKeyRequest):
-    """Save API key as environment variable for current session."""
-    env_map = {
-        "openai": "OPENAI_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "google": "GOOGLE_API_KEY",
-        "azure": "AZURE_API_KEY",
-        "github": "GH_MODELS_TOKEN",
-    }
-    env_var = env_map.get(req.provider)
+    """Save API key in secure in-memory store (not os.environ)."""
+    env_var = _PROVIDER_ENV_MAP.get(req.provider)
     if env_var:
-        os.environ[env_var] = req.key
+        _api_key_store[env_var] = req.key
         return {"status": "saved", "provider": req.provider}
     raise HTTPException(400, {"error": f"Unknown provider: {req.provider}"})
 
@@ -453,21 +478,27 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(None)):
             data = await ws.receive_text()
             # Handle incoming commands if needed
     except WebSocketDisconnect:
-        if ws in ws_clients:
-            ws_clients.remove(ws)
+        async with _ws_lock:
+            if ws in ws_clients:
+                ws_clients.remove(ws)
 
 
 async def broadcast(event: str, data: Any):
     """Broadcast event to all connected WebSocket clients."""
     message = json.dumps({"event": event, "data": data})
     disconnected = []
-    for ws in ws_clients:
+    async with _ws_lock:
+        clients_snapshot = list(ws_clients)
+    for ws in clients_snapshot:
         try:
             await ws.send_text(message)
         except Exception:
             disconnected.append(ws)
-    for ws in disconnected:
-        ws_clients.remove(ws)
+    if disconnected:
+        async with _ws_lock:
+            for ws in disconnected:
+                if ws in ws_clients:
+                    ws_clients.remove(ws)
 
 
 # ============================================================
@@ -506,10 +537,9 @@ async def _run_scan_background(session: ScanSession, cfg: BasiliskConfig):
             modules = [m for m in modules if m.name in cfg.modules or any(m.name.startswith(f) for f in cfg.modules)]
 
         sem = asyncio.Semaphore(5)
-        completed_count = 0
+        completed_count = [0]  # list for mutability from inner scope
 
         async def run_module_task(mod):
-            nonlocal completed_count
             async with sem:
                 # We can't easily update the active_scans[sid]["status"] to a single module
                 # since they run in parallel, so we'll just keep it as "attacking"
@@ -517,7 +547,7 @@ async def _run_scan_background(session: ScanSession, cfg: BasiliskConfig):
                 try:
                     await broadcast("scan:progress", {
                         "session_id": sid, "module": f"Running {mod.name}...",
-                        "progress": completed_count / len(modules),
+                        "progress": completed_count[0] / len(modules),
                     })
                     findings = await mod.execute(prov, session, session.profile)
                     for f in findings:
@@ -528,10 +558,10 @@ async def _run_scan_background(session: ScanSession, cfg: BasiliskConfig):
                     logger.error(f"Module {mod.name} failed: {e}")
                     await session.add_error(mod.name, str(e))
                 finally:
-                    completed_count += 1
+                    completed_count[0] += 1
                     await broadcast("scan:progress", {
                         "session_id": sid, "module": mod.name,
-                        "progress": completed_count / len(modules),
+                        "progress": completed_count[0] / len(modules),
                     })
 
         await asyncio.gather(*(run_module_task(m) for m in modules))
@@ -734,6 +764,8 @@ async def list_providers():
         {"id": "anthropic", "name": "Anthropic", "models": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307"], "env_var": "ANTHROPIC_API_KEY"},
         {"id": "google", "name": "Google", "models": ["gemini/gemini-2.0-flash", "gemini/gemini-1.5-pro"], "env_var": "GOOGLE_API_KEY"},
         {"id": "azure", "name": "Azure OpenAI", "models": ["azure/gpt-4", "azure/gpt-35-turbo"], "env_var": "AZURE_API_KEY"},
+        {"id": "xai", "name": "xAI (Grok)", "models": ["grok-beta", "grok-2", "grok-2-1212"], "env_var": "XAI_API_KEY"},
+        {"id": "groq", "name": "Groq", "models": ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "mixtral-8x7b-32768"], "env_var": "GROQ_API_KEY"},
         {"id": "github", "name": "GitHub Models (Free)", "models": [
             "gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano",
             "o3-mini", "o4-mini", "gpt-5-nano", "gpt-5-mini",

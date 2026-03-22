@@ -97,6 +97,7 @@ extern char* BasiliskZeroWidthInject(char* input);
 extern int BasiliskCountRunes(char* input);
 extern void BasiliskFreeString(char* s);
 extern int BasiliskGetMutationCount(void);
+extern double BasiliskPopulationDiversity(char** inputs, int count);
 
 #ifdef __cplusplus
 }

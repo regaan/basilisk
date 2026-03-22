@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Basilisk Native Extensions — Build Script v1.0.8
+# Basilisk Native Extensions — Build Script v1.1.0
 #
 # Compiles Go and C native performance modules into shared libraries
 # that Python loads via ctypes for 10-100x speedup on hot paths.
@@ -191,7 +191,7 @@ verify() {
 }
 
 show_info() {
-    echo "Basilisk Native Extensions v1.0.8"
+    echo "Basilisk Native Extensions v1.1.0"
     echo ""
     echo "Platform:  ${OS}/${ARCH}"
     echo "Extension: ${SO_EXT}"
@@ -211,7 +211,7 @@ show_info() {
 }
 
 show_help() {
-    echo "Basilisk Native Extensions Build System v1.0.8"
+    echo "Basilisk Native Extensions Build System v1.1.0"
     echo ""
     echo "Usage: $0 [command]"
     echo ""
