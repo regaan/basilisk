@@ -1,4 +1,4 @@
-# Basilisk -- Open-Source AI Red Teaming Framework
+# Basilisk - Open-Source AI Red Teaming Framework
 
 > **Basilisk** is an open-source AI red teaming and LLM security testing framework. It automates adversarial prompt testing against Claude, Gemini, Grok, GPT-family models, local model runtimes, and custom LLM APIs using evolutionary prompt search. Built for security researchers, penetration testers, and defensive teams that need repeatable adversarial testing against LLM applications.
 
