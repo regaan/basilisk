@@ -77,11 +77,9 @@ fi
 if [ "$(uname -s)" = "Darwin" ]; then
     mkdir -p desktop/build/icon.iconset
     for size in 16 32 64 128 256 512; do
-        sips -z "$size" "$size" desktop/src/assets/logo.jpg --out "desktop/build/icon.iconset/icon_${size}x${size}.png" >/dev/null 2>&1 || true
-        if [ "$size" -lt 512 ]; then
-            double=$((size * 2))
-            sips -z "$double" "$double" desktop/src/assets/logo.jpg --out "desktop/build/icon.iconset/icon_${size}x${size}@2x.png" >/dev/null 2>&1 || true
-        fi
+        sips -s format png -z "$size" "$size" desktop/src/assets/logo.jpg --out "desktop/build/icon.iconset/icon_${size}x${size}.png" >/dev/null 2>&1 || true
+        double=$((size * 2))
+        sips -s format png -z "$double" "$double" desktop/src/assets/logo.jpg --out "desktop/build/icon.iconset/icon_${size}x${size}@2x.png" >/dev/null 2>&1 || true
     done
     iconutil -c icns desktop/build/icon.iconset -o desktop/build/icon.icns >/dev/null 2>&1 || true
 fi

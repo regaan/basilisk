@@ -129,11 +129,9 @@ jobs:
           if [ "${{ runner.os }}" = "macOS" ]; then
             mkdir -p build/icon.iconset
             for size in 16 32 64 128 256 512; do
-              sips -z "$size" "$size" src/assets/logo.jpg --out "build/icon.iconset/icon_${size}x${size}.png"
-              if [ "$size" -lt 512 ]; then
-                double=$((size * 2))
-                sips -z "$double" "$double" src/assets/logo.jpg --out "build/icon.iconset/icon_${size}x${size}@2x.png"
-              fi
+              sips -s format png -z "$size" "$size" src/assets/logo.jpg --out "build/icon.iconset/icon_${size}x${size}.png"
+              double=$((size * 2))
+              sips -s format png -z "$double" "$double" src/assets/logo.jpg --out "build/icon.iconset/icon_${size}x${size}@2x.png"
             done
             iconutil -c icns build/icon.iconset -o build/icon.icns
           fi
