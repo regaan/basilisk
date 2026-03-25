@@ -1,0 +1,182 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://basilisk.dev/schemas/eval-config.json",
+  "title": "Basilisk Eval Config",
+  "description": "Schema for Basilisk evaluation suite YAML configuration files.",
+  "type": "object",
+  "required": ["target", "tests"],
+  "additionalProperties": false,
+  "properties": {
+    "target": {
+      "type": "object",
+      "description": "Target LLM provider and model configuration.",
+      "required": ["provider", "model"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "LLM provider identifier.",
+          "enum": ["openai", "anthropic", "google", "azure", "github", "groq", "xai", "litellm"]
+        },
+        "model": {
+          "type": "string",
+          "description": "Model identifier (e.g. gpt-4o, claude-3-opus, gemini-pro).",
+          "minLength": 1
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key. Supports ${ENV_VAR} substitution."
+        },
+        "api_base": {
+          "type": "string",
+          "description": "Custom API base URL for self-hosted or proxy endpoints."
+        },
+        "auth": {
+          "type": "string",
+          "description": "Authentication method override."
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "description": "Default settings applied to all tests unless overridden at test level.",
+      "additionalProperties": false,
+      "properties": {
+        "timeout": {
+          "type": "number",
+          "description": "Default timeout in seconds per test. Overridden by test-level timeout.",
+          "default": 30,
+          "minimum": 0.1,
+          "maximum": 600
+        },
+        "max_retries": {
+          "type": "integer",
+          "description": "Maximum retry attempts for failed API calls.",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10
+        },
+        "temperature": {
+          "type": "number",
+          "description": "LLM sampling temperature. Use 0.0 for deterministic results.",
+          "default": 0.0,
+          "minimum": 0.0,
+          "maximum": 2.0
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata for the eval suite (author, version, description, etc.).",
+      "additionalProperties": true
+    },
+    "baseline": {
+      "type": "string",
+      "description": "Path to a previous eval result JSON file for automatic regression diffing."
+    },
+    "tests": {
+      "type": "array",
+      "description": "List of test cases to evaluate.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "prompt", "assertions"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique test identifier (e.g. INJ-001, REFUSAL-003).",
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable test name."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "The prompt to send to the target model.",
+            "minLength": 1
+          },
+          "context": {
+            "type": "string",
+            "description": "Optional system prompt or context prepended to the request."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Override the target provider for this specific test."
+          },
+          "model": {
+            "type": "string",
+            "description": "Override the target model for this specific test."
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Per-test timeout in seconds. Overrides defaults.timeout.",
+            "minimum": 0.1,
+            "maximum": 600
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags for filtering and grouping tests.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assertions": {
+            "type": "array",
+            "description": "Assertions to evaluate against the model response.",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Assertion type.",
+                  "enum": [
+                    "must_refuse",
+                    "must_not_refuse",
+                    "must_contain",
+                    "must_not_contain",
+                    "max_compliance",
+                    "max_tokens",
+                    "regex_match",
+                    "regex_no_match",
+                    "similarity",
+                    "llm_grade"
+                  ]
+                },
+                "values": {
+                  "type": "array",
+                  "description": "List of strings for contain/not-contain assertions.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "threshold": {
+                  "type": "number",
+                  "description": "Numeric threshold for score-based assertions (max_compliance, max_tokens, similarity).",
+                  "minimum": 0.0
+                },
+                "pattern": {
+                  "type": "string",
+                  "description": "Regex pattern for regex_match and regex_no_match assertions."
+                },
+                "grader_prompt": {
+                  "type": "string",
+                  "description": "Prompt for the LLM grader (llm_grade assertion only). Should never be the sole pass/fail criterion."
+                },
+                "expected": {
+                  "type": "string",
+                  "description": "Expected response from the grader or reference text for similarity."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

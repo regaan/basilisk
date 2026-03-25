@@ -6,6 +6,7 @@ PIP = $(PYTHON) -m pip
 NATIVE_DIR = native
 DESKTOP_DIR = desktop
 REPORT_DIR = basilisk-reports
+REQ_FILE := $(if $(wildcard requirements.lock),requirements.lock,requirements.txt)
 
 all: build-native build-backend  ## Build everything (native extensions + backend binary)
 
@@ -14,7 +15,8 @@ help: ## Show this help message
 
 install: ## Install all dependencies (Python + Desktop)
 	@echo "Installing Python dependencies..."
-	$(PIP) install -r requirements.txt
+	$(PIP) install -r $(REQ_FILE)
+	$(PIP) install --no-deps -e .
 	@echo "Installing Desktop dependencies..."
 	cd $(DESKTOP_DIR) && npm install
 
@@ -27,6 +29,18 @@ build-native: ## Compile Go and C extensions
 build-backend: build-native ## Build the standalone Python backend binary (PyInstaller)
 	@echo "Building standalone backend binary..."
 	$(PYTHON) -m PyInstaller basilisk-backend.spec
+
+release-manifest: ## Generate release manifest, SBOM, and provenance metadata
+	@echo "Generating release metadata..."
+	$(PYTHON) scripts/generate_release_manifest.py
+
+release-sign: release-manifest ## Sign release metadata bundle with Ed25519
+	@echo "Signing release metadata..."
+	$(PYTHON) scripts/sign_release_bundle.py
+
+release-verify: ## Verify release metadata signatures
+	@echo "Verifying release metadata signatures..."
+	$(PYTHON) scripts/verify_release_bundle.py
 
 build-desktop: install ## Build the Electron application (dist)
 	@echo "Building desktop application..."

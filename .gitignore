@@ -76,8 +76,12 @@ logs/
 # SQLite / Local DB
 # =========================
 *.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # =========================
 # FastAPI / Uvicorn
@@ -115,9 +119,12 @@ desktop/bin/
 desktop/node_modules/
 desktop/package-lock.json
 desktop/LICENSE.txt
+!desktop/build/
+desktop/build/*
 desktop/build/icon.png
 desktop/build/icon.ico
 desktop/build/icon.icns
+!desktop/build/entitlements.mac.plist
 
 # =========================
 # Native compiled extensions
@@ -128,6 +135,8 @@ native/go/matcher/matcher
 basilisk/native_libs/*.so
 basilisk/native_libs/*.dylib
 basilisk/native_libs/*.dll
+!basilisk/native_libs/manifest.json
+!basilisk/native_libs/manifest.sig
 
 # =========================
 # Scan output / Reports
@@ -144,6 +153,11 @@ docs/_build/
 # Node
 # =========================
 node_modules/
+.nyc_output/
+.eslintcache
+*.tsbuildinfo
+playwright-report/
+test-results/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -160,12 +174,26 @@ Icon?
 .Trashes
 ehthumbs.db
 Desktop.ini
-
+.basilisk/
 # =========================
 # Environment variables
 # =========================
 .env.local
 .env.*.local
+.envrc
+
+# =========================
+# Signing / Local credentials
+# =========================
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.jks
+*.keystore
+*.mobileprovision
 
 # =========================
 # Temporary files

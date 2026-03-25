@@ -14,21 +14,41 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.util
+import base64
+import hashlib
+import json
 import logging
 import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+try:  # pragma: no cover - depends on runtime package availability
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+except ImportError:  # pragma: no cover - optional runtime state
+    ed25519 = None
+
 logger = logging.getLogger("basilisk.native")
+_SKIP_INTEGRITY_CHECK = os.environ.get("BASILISK_SKIP_NATIVE_INTEGRITY_CHECK", "").lower() == "true"
+_TRUSTED_NATIVE_SIGNING_PUBLIC_KEY_HEX = "e3c2fb80b9dfbb6604c3829a1075a05b4821e285e23da20f0a53407d3037187f"
+_MAX_NATIVE_TEXT_BYTES = max(4096, int(os.environ.get("BASILISK_NATIVE_TEXT_MAX_BYTES", "262144")))
+_MAX_NATIVE_PAIR_BYTES = max(
+    _MAX_NATIVE_TEXT_BYTES,
+    int(os.environ.get("BASILISK_NATIVE_PAIR_MAX_BYTES", str(_MAX_NATIVE_TEXT_BYTES * 2))),
+)
 
 # Library search paths
 _LIB_DIRS = [
     Path(__file__).parent / "native_libs",
     Path(__file__).parent.parent / "native" / "build",
-    Path("/usr/local/lib"),
-    Path("/usr/lib"),
 ]
+
+if os.environ.get("BASILISK_ALLOW_SYSTEM_NATIVE_LIBS", "").lower() == "true":
+    logger.warning("System native library loading enabled via BASILISK_ALLOW_SYSTEM_NATIVE_LIBS=true")
+    _LIB_DIRS.extend([
+        Path("/usr/local/lib"),
+        Path("/usr/lib"),
+    ])
 
 _EXT = ".so"
 if sys.platform == "win32":
@@ -42,6 +62,9 @@ def _find_lib(name: str) -> Optional[ctypes.CDLL]:
     for d in _LIB_DIRS:
         path = d / f"{name}{_EXT}"
         if path.exists():
+            if not _verify_library_integrity(path):
+                logger.warning("Rejected native library without verified integrity: %s", path)
+                continue
             try:
                 lib = ctypes.CDLL(str(path))
                 logger.info(f"Loaded native library: {path}")
@@ -93,35 +116,35 @@ def _ensure_loaded():
     # Set up C function signatures for encoder lib
     if _encoder_lib:
         _encoder_lib.basilisk_base64_encode.argtypes = [ctypes.c_char_p, ctypes.c_int]
-        _encoder_lib.basilisk_base64_encode.restype = ctypes.c_char_p
+        _encoder_lib.basilisk_base64_encode.restype = ctypes.c_void_p
         _encoder_lib.basilisk_rot13.argtypes = [ctypes.c_char_p]
-        _encoder_lib.basilisk_rot13.restype = ctypes.c_char_p
+        _encoder_lib.basilisk_rot13.restype = ctypes.c_void_p
         _encoder_lib.basilisk_url_encode.argtypes = [ctypes.c_char_p]
-        _encoder_lib.basilisk_url_encode.restype = ctypes.c_char_p
+        _encoder_lib.basilisk_url_encode.restype = ctypes.c_void_p
         _encoder_lib.basilisk_unicode_escape.argtypes = [ctypes.c_char_p]
-        _encoder_lib.basilisk_unicode_escape.restype = ctypes.c_char_p
+        _encoder_lib.basilisk_unicode_escape.restype = ctypes.c_void_p
         _encoder_lib.basilisk_reverse.argtypes = [ctypes.c_char_p]
-        _encoder_lib.basilisk_reverse.restype = ctypes.c_char_p
+        _encoder_lib.basilisk_reverse.restype = ctypes.c_void_p
         _encoder_lib.basilisk_free.argtypes = [ctypes.c_void_p]
         _encoder_lib.basilisk_free.restype = None
 
     # Set up Go function signatures for fuzzer lib
     if _fuzzer_lib:
         _fuzzer_lib.BasiliskMutate.argtypes = [ctypes.c_char_p, ctypes.c_int]
-        _fuzzer_lib.BasiliskMutate.restype = ctypes.c_char_p
+        _fuzzer_lib.BasiliskMutate.restype = ctypes.c_void_p
         _fuzzer_lib.BasiliskMutateRandom.argtypes = [ctypes.c_char_p]
-        _fuzzer_lib.BasiliskMutateRandom.restype = ctypes.c_char_p
+        _fuzzer_lib.BasiliskMutateRandom.restype = ctypes.c_void_p
         _fuzzer_lib.BasiliskCrossover.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
-        _fuzzer_lib.BasiliskCrossover.restype = ctypes.c_char_p
+        _fuzzer_lib.BasiliskCrossover.restype = ctypes.c_void_p
         _fuzzer_lib.BasiliskHomoglyphTransform.argtypes = [ctypes.c_char_p, ctypes.c_double]
-        _fuzzer_lib.BasiliskHomoglyphTransform.restype = ctypes.c_char_p
+        _fuzzer_lib.BasiliskHomoglyphTransform.restype = ctypes.c_void_p
         _fuzzer_lib.BasiliskZeroWidthInject.argtypes = [ctypes.c_char_p]
-        _fuzzer_lib.BasiliskZeroWidthInject.restype = ctypes.c_char_p
+        _fuzzer_lib.BasiliskZeroWidthInject.restype = ctypes.c_void_p
         _fuzzer_lib.BasiliskCountRunes.argtypes = [ctypes.c_char_p]
         _fuzzer_lib.BasiliskCountRunes.restype = ctypes.c_int
         _fuzzer_lib.BasiliskGetMutationCount.argtypes = []
         _fuzzer_lib.BasiliskGetMutationCount.restype = ctypes.c_int
-        _fuzzer_lib.BasiliskFreeString.argtypes = [ctypes.c_char_p]
+        _fuzzer_lib.BasiliskFreeString.argtypes = [ctypes.c_void_p]
         _fuzzer_lib.BasiliskFreeString.restype = None
 
     # Set up Go function signatures for matcher lib
@@ -133,14 +156,14 @@ def _ensure_loaded():
         _matcher_lib.BasiliskMatcherBuild.argtypes = [ctypes.c_int]
         _matcher_lib.BasiliskMatcherBuild.restype = None
         _matcher_lib.BasiliskMatcherSearch.argtypes = [ctypes.c_int, ctypes.c_char_p]
-        _matcher_lib.BasiliskMatcherSearch.restype = ctypes.c_char_p
+        _matcher_lib.BasiliskMatcherSearch.restype = ctypes.c_void_p
         _matcher_lib.BasiliskMatcherDestroy.argtypes = [ctypes.c_int]
         _matcher_lib.BasiliskMatcherDestroy.restype = None
         _matcher_lib.BasiliskDetectRefusal.argtypes = [ctypes.c_char_p]
         _matcher_lib.BasiliskDetectRefusal.restype = ctypes.c_double
         _matcher_lib.BasiliskDetectSensitiveData.argtypes = [ctypes.c_char_p]
-        _matcher_lib.BasiliskDetectSensitiveData.restype = ctypes.c_char_p
-        _matcher_lib.BasiliskFreeStr.argtypes = [ctypes.c_char_p]
+        _matcher_lib.BasiliskDetectSensitiveData.restype = ctypes.c_void_p
+        _matcher_lib.BasiliskFreeStr.argtypes = [ctypes.c_void_p]
         _matcher_lib.BasiliskFreeStr.restype = None
 
 
@@ -159,6 +182,98 @@ def native_status() -> Dict[str, bool]:
     }
 
 
+def _string_from_ptr(ptr: Optional[int], free_func) -> Optional[str]:
+    """Helper to convert a native char* to a Python string and free the original memory."""
+    if ptr is None or ptr == 0:
+        return None
+    try:
+        # Convert to bytes and then to string
+        val = ctypes.string_at(ptr).decode("utf-8")
+        return val
+    finally:
+        # Always free the native memory
+        free_func(ptr)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_native_manifest(directory: Path) -> dict[str, str]:
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        return {}
+    try:
+        payload = json.loads(manifest_path.read_text("utf-8"))
+    except Exception as exc:
+        logger.warning("Failed to parse native integrity manifest %s: %s", manifest_path, exc)
+        return {}
+    entries = payload.get("libraries", {})
+    normalized: dict[str, str] = {}
+    if isinstance(entries, dict):
+        for name, entry in entries.items():
+            if isinstance(entry, str):
+                normalized[name] = entry
+            elif isinstance(entry, dict) and isinstance(entry.get("sha256"), str):
+                normalized[name] = entry["sha256"]
+    return normalized
+
+
+def _verify_library_integrity(path: Path, public_key_hex: str | None = None) -> bool:
+    if _SKIP_INTEGRITY_CHECK:
+        logger.warning("Native integrity verification skipped via BASILISK_SKIP_NATIVE_INTEGRITY_CHECK=true")
+        return True
+    if not _verify_manifest_signature(path.parent, public_key_hex=public_key_hex):
+        return False
+    manifest = _load_native_manifest(path.parent)
+    if not manifest:
+        return False
+    expected = manifest.get(path.name, "")
+    if not expected:
+        return False
+    actual = _sha256_file(path)
+    if actual != expected:
+        logger.error("Native library hash mismatch for %s", path)
+        return False
+    return True
+
+
+def _verify_manifest_signature(directory: Path, public_key_hex: str | None = None) -> bool:
+    manifest_path = directory / "manifest.json"
+    signature_path = directory / "manifest.sig"
+    if not manifest_path.exists() or not signature_path.exists():
+        logger.warning("Missing signed native manifest in %s", directory)
+        return False
+    if ed25519 is None:
+        logger.warning("cryptography not available — refusing native library without signature verification")
+        return False
+
+    try:
+        public_key = ed25519.Ed25519PublicKey.from_public_bytes(
+            bytes.fromhex(public_key_hex or _TRUSTED_NATIVE_SIGNING_PUBLIC_KEY_HEX)
+        )
+        signature = base64.b64decode(signature_path.read_text("utf-8").strip())
+        public_key.verify(signature, manifest_path.read_bytes())
+        return True
+    except Exception as exc:
+        logger.error("Native manifest signature verification failed for %s: %s", directory, exc)
+        return False
+
+
+def _native_input_allowed(*values: str | bytes, total_limit: int = _MAX_NATIVE_TEXT_BYTES) -> bool:
+    total = 0
+    for value in values:
+        size = len(value if isinstance(value, bytes) else value.encode("utf-8"))
+        if size > _MAX_NATIVE_TEXT_BYTES:
+            return False
+        total += size
+    return total <= total_limit
+
+
 # ============================================================
 # Token Analyzer Wrappers (C)
 # ============================================================
@@ -166,7 +281,7 @@ def native_status() -> Dict[str, bool]:
 def estimate_tokens(text: str) -> int:
     """Estimate BPE token count. Falls back to Python heuristic."""
     _ensure_loaded()
-    if _tokens_lib:
+    if _tokens_lib and _native_input_allowed(text):
         return _tokens_lib.basilisk_estimate_tokens(text.encode("utf-8"))
     # Python fallback: rough 4-chars-per-token
     return max(1, len(text) // 4)
@@ -175,7 +290,7 @@ def estimate_tokens(text: str) -> int:
 def entropy(text: str) -> float:
     """Calculate Shannon entropy (bits per byte)."""
     _ensure_loaded()
-    if _tokens_lib:
+    if _tokens_lib and _native_input_allowed(text):
         return _tokens_lib.basilisk_entropy(text.encode("utf-8"))
     # Python fallback
     import math
@@ -190,9 +305,11 @@ def entropy(text: str) -> float:
 def levenshtein(s1: str, s2: str) -> int:
     """Levenshtein edit distance between two strings."""
     _ensure_loaded()
-    if _tokens_lib:
+    if _tokens_lib and _native_input_allowed(s1, s2, total_limit=_MAX_NATIVE_PAIR_BYTES):
         return _tokens_lib.basilisk_levenshtein(s1.encode("utf-8"), s2.encode("utf-8"))
     # Python fallback (naive DP)
+    if not _native_input_allowed(s1, s2, total_limit=_MAX_NATIVE_PAIR_BYTES):
+        raise ValueError("Input too large for safe Levenshtein evaluation")
     m, n = len(s1), len(s2)
     if m > n:
         s1, s2, m, n = s2, s1, n, m
@@ -209,8 +326,10 @@ def levenshtein(s1: str, s2: str) -> int:
 def similarity(s1: str, s2: str) -> float:
     """Normalized similarity 0.0 to 1.0."""
     _ensure_loaded()
-    if _tokens_lib:
+    if _tokens_lib and _native_input_allowed(s1, s2, total_limit=_MAX_NATIVE_PAIR_BYTES):
         return _tokens_lib.basilisk_similarity(s1.encode("utf-8"), s2.encode("utf-8"))
+    if not _native_input_allowed(s1, s2, total_limit=_MAX_NATIVE_PAIR_BYTES):
+        raise ValueError("Input too large for safe similarity evaluation")
     max_len = max(len(s1), len(s2))
     if max_len == 0:
         return 1.0
@@ -220,7 +339,7 @@ def similarity(s1: str, s2: str) -> float:
 def count_confusables(text: str) -> int:
     """Count Unicode confusable characters in text."""
     _ensure_loaded()
-    if _tokens_lib:
+    if _tokens_lib and _native_input_allowed(text):
         return _tokens_lib.basilisk_count_confusables(text.encode("utf-8"))
     return 0  # Fallback: no detection
 
@@ -228,7 +347,7 @@ def count_confusables(text: str) -> int:
 def fast_search(text: str, pattern: str) -> int:
     """Fast substring search. Returns position or -1."""
     _ensure_loaded()
-    if _tokens_lib:
+    if _tokens_lib and _native_input_allowed(text, pattern, total_limit=_MAX_NATIVE_PAIR_BYTES):
         return _tokens_lib.basilisk_fast_search(text.encode("utf-8"), pattern.encode("utf-8"))
     pos = text.lower().find(pattern.lower())
     return pos
@@ -241,10 +360,11 @@ def fast_search(text: str, pattern: str) -> int:
 def base64_encode(data: bytes) -> str:
     """Fast base64 encoding."""
     _ensure_loaded()
-    if _encoder_lib:
-        result = _encoder_lib.basilisk_base64_encode(data, len(data))
-        if result:
-            return result.decode("utf-8")
+    if _encoder_lib and _native_input_allowed(data):
+        ptr = _encoder_lib.basilisk_base64_encode(data, len(data))
+        result = _string_from_ptr(ptr, _encoder_lib.basilisk_free)
+        if result is not None:
+            return result
     import base64 as b64
     return b64.b64encode(data).decode("utf-8")
 
@@ -252,10 +372,11 @@ def base64_encode(data: bytes) -> str:
 def rot13(text: str) -> str:
     """ROT13 transform."""
     _ensure_loaded()
-    if _encoder_lib:
-        result = _encoder_lib.basilisk_rot13(text.encode("utf-8"))
-        if result:
-            return result.decode("utf-8")
+    if _encoder_lib and _native_input_allowed(text):
+        ptr = _encoder_lib.basilisk_rot13(text.encode("utf-8"))
+        result = _string_from_ptr(ptr, _encoder_lib.basilisk_free)
+        if result is not None:
+            return result
     import codecs
     return codecs.encode(text, "rot_13")
 
@@ -263,10 +384,11 @@ def rot13(text: str) -> str:
 def url_encode(text: str) -> str:
     """URL-encode a string."""
     _ensure_loaded()
-    if _encoder_lib:
-        result = _encoder_lib.basilisk_url_encode(text.encode("utf-8"))
-        if result:
-            return result.decode("utf-8")
+    if _encoder_lib and _native_input_allowed(text):
+        ptr = _encoder_lib.basilisk_url_encode(text.encode("utf-8"))
+        result = _string_from_ptr(ptr, _encoder_lib.basilisk_free)
+        if result is not None:
+            return result
     from urllib.parse import quote_plus
     return quote_plus(text)
 
@@ -274,20 +396,22 @@ def url_encode(text: str) -> str:
 def unicode_escape(text: str) -> str:
     """Convert to Unicode escape sequences."""
     _ensure_loaded()
-    if _encoder_lib:
-        result = _encoder_lib.basilisk_unicode_escape(text.encode("utf-8"))
-        if result:
-            return result.decode("utf-8")
+    if _encoder_lib and _native_input_allowed(text):
+        ptr = _encoder_lib.basilisk_unicode_escape(text.encode("utf-8"))
+        result = _string_from_ptr(ptr, _encoder_lib.basilisk_free)
+        if result is not None:
+            return result
     return "".join(f"\\u{ord(c):04x}" for c in text)
 
 
 def reverse_string(text: str) -> str:
     """UTF-8 aware string reversal."""
     _ensure_loaded()
-    if _encoder_lib:
-        result = _encoder_lib.basilisk_reverse(text.encode("utf-8"))
-        if result:
-            return result.decode("utf-8")
+    if _encoder_lib and _native_input_allowed(text):
+        ptr = _encoder_lib.basilisk_reverse(text.encode("utf-8"))
+        result = _string_from_ptr(ptr, _encoder_lib.basilisk_free)
+        if result is not None:
+            return result
     return text[::-1]
 
 
@@ -298,14 +422,15 @@ def reverse_string(text: str) -> str:
 def mutate(text: str, mutation_type: int = -1) -> str:
     """Apply a mutation to text. -1 = random mutation type."""
     _ensure_loaded()
-    if _fuzzer_lib:
+    if _fuzzer_lib and _native_input_allowed(text):
         encoded = text.encode("utf-8")
         if mutation_type < 0:
-            result = _fuzzer_lib.BasiliskMutateRandom(encoded)
+            ptr = _fuzzer_lib.BasiliskMutateRandom(encoded)
         else:
-            result = _fuzzer_lib.BasiliskMutate(encoded, mutation_type)
-        if result:
-            return result.decode("utf-8")
+            ptr = _fuzzer_lib.BasiliskMutate(encoded, mutation_type)
+        result = _string_from_ptr(ptr, _fuzzer_lib.BasiliskFreeString)
+        if result is not None:
+            return result
     # Python fallback
     return text
 
@@ -313,14 +438,15 @@ def mutate(text: str, mutation_type: int = -1) -> str:
 def crossover(parent1: str, parent2: str, strategy: int = 0) -> str:
     """Crossover two parent strings. strategy: 0=single-point, 1=uniform, 2=prefix-suffix."""
     _ensure_loaded()
-    if _fuzzer_lib:
-        result = _fuzzer_lib.BasiliskCrossover(
+    if _fuzzer_lib and _native_input_allowed(parent1, parent2, total_limit=_MAX_NATIVE_PAIR_BYTES):
+        ptr = _fuzzer_lib.BasiliskCrossover(
             parent1.encode("utf-8"),
             parent2.encode("utf-8"),
             strategy,
         )
-        if result:
-            return result.decode("utf-8")
+        result = _string_from_ptr(ptr, _fuzzer_lib.BasiliskFreeString)
+        if result is not None:
+            return result
     # Fallback: simple half-and-half
     words1 = parent1.split()
     words2 = parent2.split()
@@ -330,27 +456,29 @@ def crossover(parent1: str, parent2: str, strategy: int = 0) -> str:
 def homoglyph_transform(text: str, rate: float = 0.15) -> str:
     """Replace characters with Unicode confusables."""
     _ensure_loaded()
-    if _fuzzer_lib:
-        result = _fuzzer_lib.BasiliskHomoglyphTransform(text.encode("utf-8"), rate)
-        if result:
-            return result.decode("utf-8")
+    if _fuzzer_lib and _native_input_allowed(text):
+        ptr = _fuzzer_lib.BasiliskHomoglyphTransform(text.encode("utf-8"), rate)
+        result = _string_from_ptr(ptr, _fuzzer_lib.BasiliskFreeString)
+        if result is not None:
+            return result
     return text
 
 
 def zero_width_inject(text: str) -> str:
     """Insert zero-width characters into text."""
     _ensure_loaded()
-    if _fuzzer_lib:
-        result = _fuzzer_lib.BasiliskZeroWidthInject(text.encode("utf-8"))
-        if result:
-            return result.decode("utf-8")
+    if _fuzzer_lib and _native_input_allowed(text):
+        ptr = _fuzzer_lib.BasiliskZeroWidthInject(text.encode("utf-8"))
+        result = _string_from_ptr(ptr, _fuzzer_lib.BasiliskFreeString)
+        if result is not None:
+            return result
     return text
 
 
 def count_runes(text: str) -> int:
     """Count Unicode rune count (character count)."""
     _ensure_loaded()
-    if _fuzzer_lib:
+    if _fuzzer_lib and _native_input_allowed(text):
         return _fuzzer_lib.BasiliskCountRunes(text.encode("utf-8"))
     return len(text)
 
@@ -370,7 +498,7 @@ def get_mutation_count() -> int:
 def detect_refusal(text: str) -> float:
     """Detect refusal patterns. Returns confidence 0.0-1.0."""
     _ensure_loaded()
-    if _matcher_lib:
+    if _matcher_lib and _native_input_allowed(text):
         return _matcher_lib.BasiliskDetectRefusal(text.encode("utf-8"))
     # Python fallback — use canonical refusal module
     from basilisk.core.refusal import refusal_confidence
@@ -380,10 +508,11 @@ def detect_refusal(text: str) -> float:
 def detect_sensitive_data(text: str) -> str:
     """Detect sensitive data patterns. Returns JSON string of matches."""
     _ensure_loaded()
-    if _matcher_lib:
-        result = _matcher_lib.BasiliskDetectSensitiveData(text.encode("utf-8"))
-        if result:
-            return result.decode("utf-8")
+    if _matcher_lib and _native_input_allowed(text):
+        ptr = _matcher_lib.BasiliskDetectSensitiveData(text.encode("utf-8"))
+        result = _string_from_ptr(ptr, _matcher_lib.BasiliskFreeStr)
+        if result is not None:
+            return result
     return "[]"
 
 
@@ -400,7 +529,7 @@ class PatternMatcher:
 
     def add_pattern(self, pattern: str) -> int:
         """Add a pattern to the matcher. Returns pattern index."""
-        if self._native:
+        if self._native and _native_input_allowed(pattern):
             return _matcher_lib.BasiliskMatcherAddPattern(self._id, pattern.encode("utf-8"))
         idx = len(self._patterns)
         self._patterns.append(pattern.lower())
@@ -413,10 +542,11 @@ class PatternMatcher:
 
     def search(self, text: str) -> str:
         """Search text for patterns. Returns JSON string of matches."""
-        if self._native:
-            result = _matcher_lib.BasiliskMatcherSearch(self._id, text.encode("utf-8"))
-            if result:
-                return result.decode("utf-8")
+        if self._native and _native_input_allowed(text):
+            ptr = _matcher_lib.BasiliskMatcherSearch(self._id, text.encode("utf-8"))
+            result = _string_from_ptr(ptr, _matcher_lib.BasiliskFreeStr)
+            if result is not None:
+                return result
         # Python fallback
         import json
         matches = []

@@ -1,94 +1,103 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('basilisk', {
-    // IPC: renderer → main
-    send: (channel, ...args) => {
-        const allowed = ['window:minimize', 'window:maximize', 'window:close'];
-        if (allowed.includes(channel)) ipcRenderer.send(channel, ...args);
-    },
-    invoke: (channel, ...args) => {
-        const allowed = [
-            'dialog:exportReport', 'dialog:saveFile', 'window:getToken', 'window:getPort',
-            'backend:multiturnModules', 'backend:evolutionOperators', 'backend:moduleList',
-            'shell:openExternal', 'update:check', 'update:download', 'update:install',
-        ];
-        if (allowed.includes(channel)) return ipcRenderer.invoke(channel, ...args);
-        return Promise.reject(new Error(`IPC channel not allowed: ${channel}`));
-    },
+const WINDOW_CHANNELS = new Set(['window:minimize', 'window:maximize', 'window:close']);
+const INVOKE_CHANNELS = new Set([
+    'dialog:copyFile',
+    'dialog:exportReport',
+    'dialog:saveFile',
+    'shell:openExternal',
+    'update:check',
+    'update:download',
+    'update:install',
+    'update:getStatus',
+    'backend:request',
+]);
 
-    // IPC: main → renderer
+function send(channel, ...args) {
+    if (WINDOW_CHANNELS.has(channel)) {
+        ipcRenderer.send(channel, ...args);
+    }
+}
+
+function invoke(channel, ...args) {
+    if (INVOKE_CHANNELS.has(channel)) {
+        return ipcRenderer.invoke(channel, ...args);
+    }
+    return Promise.reject(new Error(`IPC channel not allowed: ${channel}`));
+}
+
+async function request(path, options = {}) {
+    return invoke('backend:request', {
+        path,
+        method: options.method || 'GET',
+        body: options.body ?? null,
+    });
+}
+
+const basiliskApi = {
+    send,
+    invoke,
+    request,
+
     onBackendLog: (cb) => ipcRenderer.on('backend-log', (_, msg) => cb(msg)),
     onBackendError: (cb) => ipcRenderer.on('backend-error', (_, msg) => cb(msg)),
+    onBackendEvent: (cb) => ipcRenderer.on('backend:event', (_, msg) => cb(msg)),
 
-    // Helper to get token (internal use)
-    _getToken: () => ipcRenderer.invoke('window:getToken'),
-
-    // Report export shortcut
     report: {
         export: async (sessionId, format) => {
             try {
-                const token = await ipcRenderer.invoke('window:getToken');
-                const resp = await fetch(`http://127.0.0.1:8741/api/report/${sessionId}`, {
+                const data = await request(`/api/report/${sessionId}`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Basilisk-Token': token
-                    },
-                    body: JSON.stringify({ format, open_browser: true }),
+                    body: { format, open_browser: false },
                 });
-                const data = await resp.json();
-                if (data.content) {
-                    const ext = format === 'html' ? 'html' : format === 'sarif' ? 'sarif' : format === 'markdown' ? 'md' : 'json';
-                    const result = await ipcRenderer.invoke('dialog:saveFile', {
-                        content: typeof data.content === 'string' ? data.content : JSON.stringify(data.content, null, 2),
-                        defaultName: `basilisk_report_${Date.now()}.${ext}`,
-                        filters: [{ name: `${format.toUpperCase()} Report`, extensions: [ext] }],
-                    });
-                    return result;
+                if (!data.path) {
+                    return { success: false, error: data.error || 'No report generated' };
                 }
-                return { success: false, error: data.error || 'No content' };
+                const ext = format === 'html' ? 'html'
+                    : format === 'sarif' ? 'sarif'
+                    : format === 'markdown' ? 'md'
+                    : format === 'pdf' ? 'pdf'
+                    : 'json';
+                return invoke('dialog:copyFile', {
+                    sourcePath: data.path,
+                    defaultName: `basilisk_report_${Date.now()}.${ext}`,
+                    filters: [{ name: `${format.toUpperCase()} Report`, extensions: [ext] }],
+                });
             } catch (e) {
                 return { success: false, error: e.message };
             }
         },
     },
 
-    // API key management via electron-store (if available)
     apiKeys: {
         set: async (provider, key) => {
             try {
-                const token = await ipcRenderer.invoke('window:getToken');
-                await fetch(`http://127.0.0.1:8741/api/settings/apikey`, {
+                return await request('/api/settings/apikey', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Basilisk-Token': token
-                    },
-                    body: JSON.stringify({ provider, key }),
+                    body: { provider, key },
                 });
-            } catch (e) { /* best effort */ }
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
         },
     },
 
-    // Multi-turn module details
     modules: {
-        getMultiturn: () => ipcRenderer.invoke('backend:multiturnModules'),
-        getAll: () => ipcRenderer.invoke('backend:moduleList'),
+        getMultiturn: () => request('/api/modules/multiturn'),
+        getAll: () => request('/api/modules'),
     },
 
-    // Evolution engine info
     evolution: {
-        getOperators: () => ipcRenderer.invoke('backend:evolutionOperators'),
+        getOperators: () => request('/api/evolution/operators'),
     },
 
-    // Open external URL safely
-    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+    openExternal: (url) => invoke('shell:openExternal', url),
 
-    // Update controls
     update: {
-        check: () => ipcRenderer.invoke('update:check'),
-        download: () => ipcRenderer.invoke('update:download'),
-        install: () => ipcRenderer.invoke('update:install'),
+        check: () => invoke('update:check'),
+        download: () => invoke('update:download'),
+        install: () => invoke('update:install'),
+        getStatus: () => invoke('update:getStatus'),
         onAvailable: (cb) => ipcRenderer.on('update:available', (_, data) => cb(data)),
         onNotAvailable: (cb) => ipcRenderer.on('update:not-available', (_, data) => cb(data)),
         onProgress: (cb) => ipcRenderer.on('update:progress', (_, data) => cb(data)),
@@ -96,21 +105,7 @@ contextBridge.exposeInMainWorld('basilisk', {
         onError: (cb) => ipcRenderer.on('update:error', (_, data) => cb(data)),
         onChecking: (cb) => ipcRenderer.on('update:checking', () => cb()),
     },
-});
+};
 
-// Also expose as window.api for compatibility — with same channel restrictions
-contextBridge.exposeInMainWorld('api', {
-    send: (channel, ...args) => {
-        const allowed = ['window:minimize', 'window:maximize', 'window:close'];
-        if (allowed.includes(channel)) ipcRenderer.send(channel, ...args);
-    },
-    invoke: (channel, ...args) => {
-        const allowed = [
-            'dialog:exportReport', 'dialog:saveFile', 'window:getToken', 'window:getPort',
-            'backend:multiturnModules', 'backend:evolutionOperators', 'backend:moduleList',
-            'shell:openExternal', 'update:check', 'update:download', 'update:install',
-        ];
-        if (allowed.includes(channel)) return ipcRenderer.invoke(channel, ...args);
-        return Promise.reject(new Error(`IPC channel not allowed: ${channel}`));
-    },
-});
+contextBridge.exposeInMainWorld('basilisk', basiliskApi);
+contextBridge.exposeInMainWorld('api', basiliskApi);

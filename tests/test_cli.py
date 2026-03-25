@@ -32,6 +32,7 @@ class TestCLI:
         assert "--target" in result.output
         assert "--provider" in result.output
         assert "--mode" in result.output
+        assert "--execution-mode" in result.output
 
     def test_recon_help(self):
         result = self.runner.invoke(cli, ["recon", "--help"])
@@ -64,3 +65,19 @@ class TestCLI:
     def test_recon_requires_target(self):
         result = self.runner.invoke(cli, ["recon"])
         assert result.exit_code != 0
+
+    def test_scan_rejects_inline_api_key(self):
+        result = self.runner.invoke(
+            cli,
+            ["scan", "-t", "https://example.test", "--api-key", "sk-inline-secret"],
+        )
+        assert result.exit_code != 0
+        assert "no longer accepts inline secret values" in result.output
+
+    def test_scan_rejects_inline_attacker_api_key(self):
+        result = self.runner.invoke(
+            cli,
+            ["scan", "-t", "https://example.test", "--attacker-api-key", "sk-inline-secret"],
+        )
+        assert result.exit_code != 0
+        assert "no longer accepts inline secret values" in result.output

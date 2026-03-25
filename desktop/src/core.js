@@ -1,94 +1,33 @@
 /**
  * Basilisk Desktop — Core Module
- * Window controls, shared state, navigation, helpers, backend connection, WebSocket.
+ * Shared API helpers, notifications, navigation, and backend connection.
  */
 
-// ── Window controls ──
-document.getElementById('btn-min')?.addEventListener('click', () => (window.basilisk?.send || window.api?.send)?.('window:minimize'));
-document.getElementById('btn-max')?.addEventListener('click', () => (window.basilisk?.send || window.api?.send)?.('window:maximize'));
-document.getElementById('btn-close')?.addEventListener('click', () => (window.basilisk?.send || window.api?.send)?.('window:close'));
+import { appState, esc, ts } from './shared.js';
 
-// ── Shared State (global) ──
-const BRIDGE = 'http://127.0.0.1:8741';
-let currentSession = null;
-let allFindings = [];
-let scanning = false;
-let timerInterval = null;
-let timerStart = null;
-let authToken = null;
+const connDot = document.getElementById('conn-dot');
+const connLabel = document.getElementById('conn-label');
 
-// ── Navigation ──
-const tabs = document.querySelectorAll('.tab');
-const views = document.querySelectorAll('.view');
-
-tabs.forEach(t => {
-    t.addEventListener('click', () => {
-        tabs.forEach(x => x.classList.remove('active'));
-        views.forEach(x => x.classList.remove('active'));
-        t.classList.add('active');
-        const v = document.getElementById(`v-${t.dataset.v}`);
-        if (v) v.classList.add('active');
-        // lazy load
-        if (t.dataset.v === 'modules') { loadModules(); loadMultiturnModules(); }
-        if (t.dataset.v === 'evolution') loadEvolutionOperators();
-        if (t.dataset.v === 'sessions' || t.dataset.v === 'reports') loadSessions();
-        if (t.dataset.v === 'settings') loadNative();
-    });
-});
-
-// ── Helpers ──
-const esc = s => { const d = document.createElement('div'); d.innerText = s || ''; return d.innerHTML; };
-const trunc = (s, n = 100) => { const x = typeof s === 'string' ? s : JSON.stringify(s || ''); return x.length > n ? x.slice(0, n) + '…' : x; };
-const ts = () => new Date().toLocaleTimeString('en-US', { hour12: false });
-
-function log(type, msg) {
-    [document.getElementById('sys-log'), document.getElementById('full-log')].forEach(el => {
-        if (!el) return;
-        const d = document.createElement('div');
-        d.className = `ll ${type}`;
-        d.innerText = `[${ts()}] ${msg}`;
-        el.appendChild(d);
-        el.scrollTop = el.scrollHeight;
-    });
-    if (type === 'err') toast('error', msg);
-}
-
-function toast(type, msg) {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-    const t = document.createElement('div');
-    t.className = `toast ${type}`;
-    const iconMap = { error: '✕', ok: '✓', inf: 'ℹ' };
-    const icon = iconMap[type] || '•';
-    t.innerHTML = `
-        <div class="toast-icon">${icon}</div>
-        <div class="toast-msg">${esc(msg)}</div>
-    `;
-    container.appendChild(t);
-    setTimeout(() => {
-        t.classList.add('removing');
-        setTimeout(() => t.remove(), 200);
-    }, 4000);
-}
-
-async function apiFetch(path, opts = {}) {
+export async function apiFetch(path, opts = {}) {
     try {
-        if (!authToken && window.basilisk?._getToken) {
-            authToken = await window.basilisk._getToken();
+        let body = opts.body ?? null;
+        if (typeof body === 'string') {
+            try { body = JSON.parse(body); } catch { /* keep raw */ }
         }
-        const headers = { 'Content-Type': 'application/json' };
-        if (authToken) headers['X-Basilisk-Token'] = authToken;
-
-        const r = await fetch(`${BRIDGE}${path}`, { headers, ...opts });
-        const data = await r.json();
-        if (!r.ok || data.error) {
-            const err = data.error || `HTTP ${r.status}`;
-            toast('error', err);
+        const data = await window.basilisk.request(path, {
+            method: opts.method || 'GET',
+            body,
+        });
+        if (data?.error && !opts.quiet) {
+            const err = data.error || 'Request failed';
+            if (appState.backendReady || path === '/health') {
+                toast('error', err);
+            }
             return data;
         }
-        return data;
+        return data || {};
     } catch (e) {
-        if (backendReady) {
+        if (!opts.quiet && appState.backendReady) {
             log('err', `API: ${e.message}`);
             toast('error', `Connection failed: ${e.message}`);
         }
@@ -96,95 +35,130 @@ async function apiFetch(path, opts = {}) {
     }
 }
 
-// ── Backend Connection ──
-const connDot = document.getElementById('conn-dot');
-const connLabel = document.getElementById('conn-label');
-let backendReady = false;
+export function log(type, msg) {
+    [document.getElementById('sys-log'), document.getElementById('full-log')].forEach((el) => {
+        if (!el) return;
+        const line = document.createElement('div');
+        line.className = `ll ${type}`;
+        line.innerText = `[${ts()}] ${msg}`;
+        el.appendChild(line);
+        el.scrollTop = el.scrollHeight;
+    });
+    if (type === 'err') toast('error', msg);
+}
 
-async function checkBackend(silent = false) {
-    try {
-        const r = await fetch(`${BRIDGE}/health`);
-        if (r.ok) {
-            connDot.classList.add('on');
-            connDot.classList.remove('err');
-            connLabel.innerText = 'Connected';
-            if (!backendReady) {
-                log('ok', 'Backend connected.');
-                toast('ok', 'Basilisk engine connected.');
-                backendReady = true;
-            }
-            return true;
+export function toast(type, msg) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const note = document.createElement('div');
+    note.className = `toast ${type}`;
+    const iconMap = { error: '✕', ok: '✓', inf: 'ℹ' };
+    note.innerHTML = `
+        <div class="toast-icon">${iconMap[type] || '•'}</div>
+        <div class="toast-msg">${esc(msg)}</div>
+    `;
+    container.appendChild(note);
+    setTimeout(() => {
+        note.classList.add('removing');
+        setTimeout(() => note.remove(), 200);
+    }, 4000);
+}
+
+function setConnectionState(online) {
+    if (!connDot || !connLabel) return;
+    connDot.classList.toggle('on', online);
+    connDot.classList.toggle('err', !online);
+    connLabel.innerText = online ? 'Connected' : 'Offline';
+}
+
+export async function checkBackend(silent = false) {
+    const health = await apiFetch('/health', { quiet: true });
+    if (health && !health.error && health.status === 'online') {
+        setConnectionState(true);
+        if (!appState.backendReady) {
+            log('ok', 'Backend connected.');
+            toast('ok', 'Basilisk engine connected.');
+            appState.backendReady = true;
         }
-    } catch {
-        if (!silent) {
-            connDot.classList.remove('on');
-            connDot.classList.add('err');
-            connLabel.innerText = 'Offline';
-        }
+        return true;
+    }
+    if (!silent) {
+        setConnectionState(false);
     }
     return false;
 }
 
-let poll = setInterval(async () => {
-    if (!authToken && window.basilisk?._getToken) {
-        authToken = await window.basilisk._getToken();
-    }
-    if (await checkBackend()) {
-        clearInterval(poll);
-        loadNative();
-        loadModules();
-        connectWebSocket();
-    }
-}, 500);
-checkBackend(true);
+/**
+ * @param {{
+ *   onTabChange?: (view: string) => void,
+ *   onBackendReady?: () => void,
+ *   onBackendEvent?: (event: string, data: any) => void,
+ * }} deps
+ */
+export function initCore(deps = {}) {
+    document.getElementById('btn-min')?.addEventListener('click', () => window.basilisk?.send?.('window:minimize'));
+    document.getElementById('btn-max')?.addEventListener('click', () => window.basilisk?.send?.('window:maximize'));
+    document.getElementById('btn-close')?.addEventListener('click', () => window.basilisk?.send?.('window:close'));
 
-// ── WebSocket for real-time scan events ──
-let ws = null;
-let wsRetries = 0;
+    const tabs = document.querySelectorAll('.tab');
+    const views = document.querySelectorAll('.view');
+    tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            tabs.forEach((node) => node.classList.remove('active'));
+            views.forEach((node) => node.classList.remove('active'));
+            tab.classList.add('active');
+            const view = document.getElementById(`v-${tab.dataset.v}`);
+            if (view) view.classList.add('active');
+            deps.onTabChange?.(tab.dataset.v);
+        });
+    });
 
-function connectWebSocket() {
-    if (wsRetries >= 5) return;
-    try {
-        const url = `ws://127.0.0.1:8741/ws${authToken ? `?token=${authToken}` : ''}`;
-        ws = new WebSocket(url);
-        ws.onopen = () => { wsRetries = 0; log('ok', 'WebSocket connected.'); };
-        ws.onmessage = (evt) => {
-            try {
-                const msg = JSON.parse(evt.data);
-                if (msg.event === 'auth_error') {
-                    log('err', 'WebSocket Authentication failed.');
-                    return;
-                }
-                handleWSEvent(msg.event, msg.data);
-            } catch { }
-        };
-        ws.onclose = () => {
-            wsRetries++;
-            if (wsRetries === 1) log('dim', 'WebSocket disconnected — using HTTP polling.');
-            if (wsRetries < 5) setTimeout(connectWebSocket, 5000);
-        };
-        ws.onerror = () => { };
-    } catch { }
+    document.addEventListener('keydown', (event) => {
+        if (event.ctrlKey || event.metaKey) {
+            const shortcuts = {
+                1: 'dashboard',
+                2: 'scan',
+                3: 'sessions',
+                4: 'modules',
+                5: 'evolution',
+                6: 'findings',
+                7: 'diff',
+                8: 'posture',
+            };
+            if (shortcuts[event.key]) {
+                document.querySelector(`[data-v="${shortcuts[event.key]}"]`)?.click();
+                event.preventDefault();
+            }
+        }
+    });
+
+    window.basilisk?.onBackendLog?.((msg) => log('dim', msg.trim()));
+    window.basilisk?.onBackendError?.((msg) => log('err', `Backend: ${msg}`));
+    window.basilisk?.onBackendEvent?.((msg) => {
+        if (msg?.event) {
+            deps.onBackendEvent?.(msg.event, msg.data);
+        }
+    });
+
+    document.getElementById('btn-clear-log')?.addEventListener('click', () => {
+        const logView = document.getElementById('full-log');
+        if (logView) {
+            logView.innerHTML = '<div class="ll dim">[system] Log cleared</div>';
+        }
+    });
+
+    document.getElementById('btn-open-homepage')?.addEventListener('click', async () => {
+        const result = await window.basilisk?.openExternal?.('https://regaan.rothackers.com');
+        if (result && !result.success) {
+            toast('error', result.error || 'Failed to open homepage');
+        }
+    });
+
+    const backendPoll = setInterval(async () => {
+        if (await checkBackend()) {
+            clearInterval(backendPoll);
+            deps.onBackendReady?.();
+        }
+    }, 500);
+    checkBackend(true);
 }
-
-// ── Keyboard Shortcuts ──
-document.addEventListener('keydown', e => {
-    if (e.ctrlKey || e.metaKey) {
-        const map = { '1': 'dashboard', '2': 'scan', '3': 'sessions', '4': 'modules', '5': 'evolution', '6': 'findings', '7': 'diff', '8': 'posture' };
-        if (map[e.key]) { document.querySelector(`[data-v="${map[e.key]}"]`)?.click(); e.preventDefault(); }
-    }
-});
-
-// ── Backend log forwarding ──
-if (window.basilisk?.onBackendLog) {
-    window.basilisk.onBackendLog(msg => log('dim', msg.trim()));
-}
-if (window.basilisk?.onBackendError) {
-    window.basilisk.onBackendError(msg => log('err', `Backend: ${msg}`));
-}
-
-// ── Clear Log ──
-document.getElementById('btn-clear-log')?.addEventListener('click', () => {
-    const l = document.getElementById('full-log');
-    if (l) l.innerHTML = '<div class="ll dim">[system] Log cleared</div>';
-});

@@ -12,12 +12,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
-COPY pyproject.toml README.md requirements.txt ./
+COPY pyproject.toml README.md requirements.txt requirements.lock ./
 COPY basilisk/ ./basilisk/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir .
+    if [ -f requirements.lock ]; then pip install --no-cache-dir -r requirements.lock; fi && \
+    pip install --no-cache-dir --no-deps .
 
 # Final stage
 FROM python:3.11-slim

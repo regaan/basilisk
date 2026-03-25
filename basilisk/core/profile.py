@@ -131,6 +131,9 @@ class BasiliskProfile:
     rag_detected: bool = False
     rag_indicators: list[str] = field(default_factory=list)
 
+    # Sensitive data detection patterns (used by multimodal attack module)
+    sensitive_data_patterns: list[str] = field(default_factory=list)
+
     # Rate limits
     rate_limit_rpm: int | None = None
     rate_limit_tpm: int | None = None
@@ -159,6 +162,7 @@ class BasiliskProfile:
             "detected_tools": [t.to_dict() for t in self.detected_tools],
             "rag_detected": self.rag_detected,
             "rag_indicators": self.rag_indicators,
+            "sensitive_data_patterns": self.sensitive_data_patterns,
             "rate_limit_rpm": self.rate_limit_rpm,
             "rate_limit_tpm": self.rate_limit_tpm,
             "recon_timestamp": self.recon_timestamp.isoformat(),
@@ -187,6 +191,7 @@ class BasiliskProfile:
             profile.detected_tools = [DetectedTool.from_dict(t) for t in data["detected_tools"]]
         profile.rag_detected = data.get("rag_detected", False)
         profile.rag_indicators = data.get("rag_indicators", [])
+        profile.sensitive_data_patterns = data.get("sensitive_data_patterns", [])
         profile.rate_limit_rpm = data.get("rate_limit_rpm")
         profile.rate_limit_tpm = data.get("rate_limit_tpm")
         if "recon_timestamp" in data:

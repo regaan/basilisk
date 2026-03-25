@@ -8,12 +8,19 @@ evolution parameters, and output preferences.
 from __future__ import annotations
 
 import os
+import dataclasses
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
+import logging
 import yaml
+
+from basilisk.campaign import CampaignConfig
+from basilisk.policy.models import RawEvidenceMode, ScanPolicy
+
+logger = logging.getLogger("basilisk.config")
 
 
 class ScanMode(str, Enum):
@@ -44,7 +51,27 @@ class TargetConfig:
         
         # 1. Handle @filename syntax
         if key.startswith("@"):
-            path = Path(key[1:])
+            raw_path = key[1:]
+            path = Path(raw_path).expanduser().resolve()
+            
+            
+            safe_roots = [
+                Path("~/.basilisk").expanduser().resolve(),
+                Path.cwd().resolve()
+            ]
+            
+            is_safe = any(path.is_relative_to(root) for root in safe_roots)
+            allow_unsafe = os.environ.get("BASILISK_ALLOW_UNSAFE_CONFIG_READ", "").lower() == "true"
+            
+            if not is_safe and not allow_unsafe:
+                logger.error(
+                    "SECURITY ALERT: @filename path '%s' is outside permitted directories. "
+                    "Only files in ~/.basilisk/ or CWD are allowed for enterprise security. "
+                    "Use BASILISK_ALLOW_UNSAFE_CONFIG_READ=true to override (NOT RECOMMENDED).",
+                    raw_path
+                )
+                return ""
+                
             if path.exists():
                 return path.read_text("utf-8").strip()
             # If specified as file but not found, return empty (validation will catch it)
@@ -84,6 +111,15 @@ class EvolutionConfig:
     attacker_api_key: str = ""
     max_concurrent: int = 5
     temperature: float = 0.7
+    exit_on_first: bool = False        # Stop after first breakthrough
+    enable_cache: bool = True          # Cache payload evaluations
+    cache_persist_path: str = ""       # Path to persist cache (empty = no persist)
+    diversity_mode: str = "novelty"    # "off", "novelty", "niche"
+    intent_weight: float = 0.15        # 0 = disabled, 0.15 = default
+    operator_bandit: bool = True
+    operator_reward_decay: float = 0.92
+    operator_exploration_bias: float = 0.08
+    multi_objective_mode: str = "pareto"
 
 
 @dataclass
@@ -91,7 +127,8 @@ class OutputConfig:
     """Report output configuration."""
     format: str = "html"            # html, json, sarif, markdown, pdf
     output_dir: str = "./basilisk-reports"
-    include_conversations: bool = True
+    include_conversations: bool = False
+    include_raw_content: bool = False
     include_evolution_log: bool = True
     sarif_file: str = ""
     jira_url: str = ""
@@ -133,6 +170,8 @@ class BasiliskConfig:
     target: TargetConfig = field(default_factory=TargetConfig)
     mode: ScanMode = ScanMode.STANDARD
     evolution: EvolutionConfig = field(default_factory=EvolutionConfig)
+    campaign: CampaignConfig = field(default_factory=CampaignConfig)
+    policy: ScanPolicy = field(default_factory=ScanPolicy)
     output: OutputConfig = field(default_factory=OutputConfig)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     stealth: StealthConfig = field(default_factory=StealthConfig)
@@ -145,6 +184,10 @@ class BasiliskConfig:
     debug: bool = False
     skip_recon: bool = False
     session_db: str = "./basilisk-sessions.db"
+    include_research_modules: bool = False
+    persist_payloads: bool = False
+    persist_responses: bool = False
+    persist_conversations: bool = False
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> BasiliskConfig:
@@ -158,6 +201,13 @@ class BasiliskConfig:
 
         config = cls()
         _apply_dict(config, raw)
+        return config
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BasiliskConfig:
+        """Load configuration from a nested dictionary."""
+        config = cls()
+        _apply_dict(config, data or {})
         return config
 
     @classmethod
@@ -191,12 +241,24 @@ class BasiliskConfig:
             config.evolution.attacker_model = kwargs["attacker_model"]
         if kwargs.get("attacker_api_key"):
             config.evolution.attacker_api_key = kwargs["attacker_api_key"]
+        if kwargs.get("campaign"):
+            _apply_dict(config.campaign, kwargs["campaign"])
+        if kwargs.get("policy"):
+            _apply_dict(config.policy, kwargs["policy"])
         if kwargs.get("population_size"):
             config.evolution.population_size = int(kwargs["population_size"])
         if kwargs.get("fitness_threshold"):
             config.evolution.fitness_threshold = float(kwargs["fitness_threshold"])
         if kwargs.get("stagnation_limit"):
             config.evolution.stagnation_limit = int(kwargs["stagnation_limit"])
+        if kwargs.get("exit_on_first") is not None:
+            config.evolution.exit_on_first = kwargs["exit_on_first"]
+        if kwargs.get("enable_cache") is not None:
+            config.evolution.enable_cache = kwargs["enable_cache"]
+        if kwargs.get("diversity_mode"):
+            config.evolution.diversity_mode = kwargs["diversity_mode"]
+        if kwargs.get("intent_weight") is not None:
+            config.evolution.intent_weight = float(kwargs["intent_weight"])
         if kwargs.get("output"):
             config.output.format = kwargs["output"]
         if kwargs.get("output_dir"):
@@ -215,6 +277,27 @@ class BasiliskConfig:
             config.skip_recon = True
         if kwargs.get("recon_module"):
             config.recon_modules = list(kwargs["recon_module"])
+        if kwargs.get("include_research_modules") is not None:
+            config.include_research_modules = bool(kwargs["include_research_modules"])
+        if kwargs.get("persist_payloads") is not None:
+            config.persist_payloads = bool(kwargs["persist_payloads"])
+        if kwargs.get("persist_responses") is not None:
+            config.persist_responses = bool(kwargs["persist_responses"])
+        if kwargs.get("persist_conversations") is not None:
+            config.persist_conversations = bool(kwargs["persist_conversations"])
+        if kwargs.get("include_conversations") is not None:
+            config.output.include_conversations = bool(kwargs["include_conversations"])
+        if kwargs.get("include_raw_content") is not None:
+            config.output.include_raw_content = bool(kwargs["include_raw_content"])
+
+        if config.policy.retain_raw_findings:
+            config.persist_payloads = True
+            config.persist_responses = True
+        if config.policy.retain_conversations:
+            config.persist_conversations = True
+        if config.policy.raw_evidence_mode == RawEvidenceMode.FULL:
+            config.output.include_raw_content = True
+            config.output.include_conversations = config.persist_conversations
 
         return config
 
@@ -229,12 +312,62 @@ class BasiliskConfig:
             errors.append("Evolution population size must be >= 10")
         if self.evolution.generations < 1:
             errors.append("Evolution generations must be >= 1")
+        errors.extend(self.policy.validate())
+        if self.policy.execution_mode in ("exploit_chain", "research") and not self.campaign.authorization.operator:
+            errors.append("Campaign operator is required for exploit_chain or research mode")
+        if self.policy.approval_required and not self.campaign.authorization.approved:
+            errors.append("Campaign approval is required by policy but not confirmed")
         return errors
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary (for saving/logging)."""
-        import dataclasses
         return dataclasses.asdict(self)
+
+    def to_safe_dict(self) -> dict[str, Any]:
+        """Serialize configuration without persisting secrets."""
+        data = dataclasses.asdict(self)
+
+        target = data.get("target", {})
+        if target:
+            target["api_key"] = ""
+            target["auth_header"] = ""
+            if target.get("system_prompt"):
+                target["system_prompt"] = "[redacted]"
+            target["custom_headers"] = _redact_mapping(target.get("custom_headers", {}))
+
+        evolution = data.get("evolution", {})
+        if evolution:
+            evolution["attacker_api_key"] = ""
+
+        campaign = data.get("campaign", {})
+        if campaign:
+            auth = campaign.get("authorization", {})
+            if auth:
+                if auth.get("justification"):
+                    auth["justification"] = "[redacted]"
+                auth["signed_scope_hash"] = auth.get("signed_scope_hash", "")
+
+        output = data.get("output", {})
+        if output:
+            output["jira_token"] = ""
+            output["defectdojo_token"] = ""
+
+        return data
+
+
+def _redact_mapping(values: dict[str, Any]) -> dict[str, Any]:
+    redacted: dict[str, Any] = {}
+    for key, value in values.items():
+        if _looks_sensitive_key(key):
+            redacted[key] = "[redacted]"
+        else:
+            redacted[key] = value
+    return redacted
+
+
+def _looks_sensitive_key(key: str) -> bool:
+    lower = key.lower()
+    return any(token in lower for token in ("key", "token", "secret", "auth", "password", "cookie"))
 
 
 def _apply_dict(obj: Any, data: dict[str, Any]) -> None:

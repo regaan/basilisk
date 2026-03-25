@@ -60,7 +60,7 @@ int basilisk_estimate_tokens(const char *text) {
             }
             consecutive_special = 0;
         } else if (isdigit(c)) {
-            if (!in_word || !isdigit((unsigned char)text[i-1])) {
+            if (!in_word || i == 0 || !isdigit((unsigned char)text[i-1])) {
                 tokens++;  // Numbers tokenize differently
             }
             in_word = 1;

@@ -9,8 +9,17 @@ import pytest
 from datetime import datetime, timezone
 
 from basilisk.core.finding import Finding, Severity, AttackCategory, Message
+from basilisk.core.evidence import (
+    EvidenceBundle,
+    EvidenceSignal,
+    EvidenceSignalKind,
+    EvidenceVerdict,
+    build_evidence_bundle,
+    calibrate_confidence,
+)
 from basilisk.core.profile import BasiliskProfile, ModelProvider, GuardrailLevel, DetectedTool, GuardrailProfile
 from basilisk.core.config import BasiliskConfig, ScanMode, TargetConfig, EvolutionConfig, OutputConfig
+from basilisk.core.session import ScanSession
 
 
 # ── Severity ──
@@ -82,6 +91,12 @@ class TestMessage:
         assert restored.content == msg.content
         assert restored.metadata == msg.metadata
 
+    def test_message_sanitized_dict(self):
+        msg = Message(role="assistant", content="A" * 400)
+        d = msg.sanitized_dict(max_chars=20)
+        assert d["content"].startswith("A" * 20)
+        assert d["content"].endswith("...")
+
 
 # ── Finding ──
 
@@ -150,6 +165,100 @@ class TestFinding:
     def test_severity_icon_property(self):
         f = Finding(severity=Severity.CRITICAL)
         assert f.severity_icon == "🔴"
+
+    def test_finding_sanitized_dict(self):
+        f = Finding(
+            title="Sensitive disclosure",
+            severity=Severity.HIGH,
+            category=AttackCategory.SENSITIVE_DISCLOSURE,
+            payload="very secret payload",
+            response="super secret response",
+            conversation=[Message(role="user", content="secret prompt")],
+        )
+        d = f.sanitized_dict()
+        assert d["payload"].startswith("[redacted]")
+        assert d["response"].startswith("[redacted]")
+        assert d["conversation"] == []
+        assert d["metadata"]["conversation_redacted"] is True
+
+    def test_finding_round_trip_with_evidence(self):
+        evidence = EvidenceBundle(
+            verdict=EvidenceVerdict.STRONG,
+            confidence_score=0.82,
+            confidence_basis="baseline_differential",
+            replay_steps=["Replay payload"],
+            signals=[
+                EvidenceSignal(
+                    name="tool_call",
+                    kind=EvidenceSignalKind.TOOL_CALL,
+                    passed=True,
+                    weight=1.0,
+                )
+            ],
+            artifacts={"response_excerpt": "system prompt: secret"},
+        )
+        finding = Finding(
+            title="Evidence-backed finding",
+            severity=Severity.HIGH,
+            category=AttackCategory.SENSITIVE_DISCLOSURE,
+            evidence=evidence,
+        )
+        restored = Finding.from_dict(finding.to_dict())
+        assert restored.evidence is not None
+        assert restored.evidence.verdict == EvidenceVerdict.STRONG
+        assert restored.evidence.signals[0].kind == EvidenceSignalKind.TOOL_CALL
+
+    def test_finding_sanitized_dict_redacts_metadata_and_evidence(self):
+        evidence = EvidenceBundle(
+            verdict=EvidenceVerdict.WEAK,
+            confidence_score=0.25,
+            artifacts={"sensitive": "system prompt is secret"},
+        )
+        finding = Finding(
+            title="Redaction test",
+            metadata={"baseline": {"response": "developer message: hidden"}},
+            evidence=evidence,
+        )
+        redacted = finding.sanitized_dict()
+        assert "[redacted]" in redacted["metadata"]["baseline"]["response"]
+        assert "[redacted]" in redacted["evidence"]["artifacts"]["sensitive"]
+
+
+# ── Evidence ──
+
+class TestEvidence:
+    def test_build_evidence_bundle_strong_verdict(self):
+        bundle = build_evidence_bundle(
+            signals=[
+                EvidenceSignal(
+                    name="baseline_shift",
+                    kind=EvidenceSignalKind.BASELINE_DIFFERENTIAL,
+                    passed=True,
+                    weight=1.0,
+                ),
+                EvidenceSignal(
+                    name="marker",
+                    kind=EvidenceSignalKind.RESPONSE_MARKER,
+                    passed=True,
+                    weight=0.8,
+                ),
+            ]
+        )
+        assert bundle.verdict in {EvidenceVerdict.STRONG, EvidenceVerdict.CONFIRMED}
+        assert bundle.confidence_score > 0.8
+
+    def test_calibrate_confidence_caps_unverified_claims(self):
+        bundle = build_evidence_bundle(
+            signals=[
+                EvidenceSignal(
+                    name="missing",
+                    kind=EvidenceSignalKind.RESPONSE_MARKER,
+                    passed=False,
+                    weight=1.0,
+                )
+            ]
+        )
+        assert calibrate_confidence(0.95, bundle) <= 0.25
 
 
 # ── BasiliskProfile ──
@@ -245,6 +354,28 @@ class TestBasiliskConfig:
         assert cfg.evolution.generations == 10
         assert cfg.output.format == "sarif"
 
+    def test_config_from_nested_dict(self):
+        cfg = BasiliskConfig.from_dict({
+            "target": {"url": "https://nested.test", "provider": "custom"},
+            "mode": "quick",
+            "output": {"format": "json"},
+            "campaign": {
+                "name": "Enterprise Run",
+                "authorization": {"operator": "regaan", "approved": True},
+            },
+            "policy": {
+                "execution_mode": "exploit_chain",
+                "evidence_threshold": "strong",
+            },
+        })
+        assert cfg.target.url == "https://nested.test"
+        assert cfg.target.provider == "custom"
+        assert cfg.mode == ScanMode.QUICK
+        assert cfg.output.format == "json"
+        assert cfg.campaign.name == "Enterprise Run"
+        assert cfg.campaign.authorization.operator == "regaan"
+        assert cfg.policy.execution_mode.value == "exploit_chain"
+
     def test_config_validation_no_target(self):
         cfg = BasiliskConfig()
         errors = cfg.validate()
@@ -266,6 +397,22 @@ class TestBasiliskConfig:
         assert isinstance(d, dict)
         assert d["target"]["url"] == "https://test.com"
 
+    def test_safe_config_redacts_secrets(self):
+        cfg = BasiliskConfig.from_cli_args(
+            target="https://test.com",
+            provider="openai",
+            api_key="sk-secret",
+            auth="Bearer secret",
+            attacker_api_key="sk-attacker",
+        )
+        cfg.target.custom_headers = {"Authorization": "secret", "X-Trace": "ok"}
+        d = cfg.to_safe_dict()
+        assert d["target"]["api_key"] == ""
+        assert d["target"]["auth_header"] == ""
+        assert d["target"]["custom_headers"]["Authorization"] == "[redacted]"
+        assert d["target"]["custom_headers"]["X-Trace"] == "ok"
+        assert d["evolution"]["attacker_api_key"] == ""
+
     def test_api_key_from_env(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
         t = TargetConfig(url="https://api.openai.com", provider="openai")
@@ -275,10 +422,31 @@ class TestBasiliskConfig:
         for mode in ["quick", "standard", "deep", "stealth", "chaos"]:
             assert ScanMode(mode).value == mode
 
+    def test_policy_requires_operator_for_exploit_mode(self):
+        cfg = BasiliskConfig.from_dict({
+            "target": {"url": "https://nested.test", "provider": "custom"},
+            "policy": {"execution_mode": "exploit_chain", "approval_required": True},
+        })
+        errors = cfg.validate()
+        assert any("Campaign operator" in err for err in errors)
+        assert any("approval" in err.lower() for err in errors)
+
 
 # ── Integration ──
 
 class TestIntegration:
+    def test_finding_descriptor_metadata_is_exposed(self):
+        finding = Finding(
+            title="Descriptor metadata",
+            severity=Severity.HIGH,
+            category=AttackCategory.PROMPT_INJECTION,
+            attack_module="basilisk.attacks.injection.direct",
+        )
+        data = finding.to_dict()
+        assert data["module_trust_tier"] == "production"
+        assert data["module_success_criteria"]
+        assert "response_marker:direct_injection_markers" in data["module_evidence_requirements"]
+
     def test_finding_in_session_summary_structure(self):
         """Verify finding data flows into session summary format."""
         f = Finding(
@@ -290,3 +458,63 @@ class TestIntegration:
         assert "severity" in d
         assert "category" in d
         assert "owasp_id" in d
+
+    @pytest.mark.asyncio
+    async def test_session_applies_finding_policy(self, tmp_path):
+        cfg = BasiliskConfig.from_dict({
+            "target": {"url": "https://example.test", "provider": "custom"},
+            "session_db": str(tmp_path / "session.db"),
+            "policy": {
+                "evidence_threshold": "strong",
+            },
+        })
+        session = ScanSession(cfg)
+        await session.initialize()
+        try:
+            finding = Finding(
+                title="Weak evidence finding",
+                severity=Severity.HIGH,
+                category=AttackCategory.PROMPT_INJECTION,
+                attack_module="basilisk.attacks.injection.direct",
+            )
+            await session.add_finding(finding)
+            assert session.findings[0].severity == Severity.MEDIUM
+            assert session.findings[0].metadata["policy_downgraded"] is True
+            assert session.summary["schema_version"] == "2.0"
+        finally:
+            await session.close("completed")
+
+    @pytest.mark.asyncio
+    async def test_session_keeps_high_finding_with_required_module_signal(self, tmp_path):
+        cfg = BasiliskConfig.from_dict({
+            "target": {"url": "https://example.test", "provider": "custom"},
+            "session_db": str(tmp_path / "session.db"),
+            "policy": {
+                "evidence_threshold": "probable",
+            },
+        })
+        session = ScanSession(cfg)
+        await session.initialize()
+        try:
+            finding = Finding(
+                title="Strong direct finding",
+                severity=Severity.HIGH,
+                category=AttackCategory.PROMPT_INJECTION,
+                attack_module="basilisk.attacks.injection.direct",
+                evidence=build_evidence_bundle(
+                    signals=[
+                        EvidenceSignal(
+                            name="direct_injection_markers",
+                            kind=EvidenceSignalKind.RESPONSE_MARKER,
+                            passed=True,
+                            weight=1.0,
+                        ),
+                    ],
+                    replay_steps=["Replay the exact payload against the same target configuration."],
+                ),
+            )
+            await session.add_finding(finding)
+            assert session.findings[0].severity == Severity.HIGH
+            assert session.findings[0].metadata.get("policy_downgraded") is not True
+        finally:
+            await session.close("completed")

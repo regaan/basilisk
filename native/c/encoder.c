@@ -108,7 +108,7 @@ char *basilisk_hex_encode(const unsigned char *data, int len) {
     return NULL;
 
   for (int i = 0; i < len; i++) {
-    sprintf(output + i * 2, "%02x", data[i]);
+    snprintf(output + i * 2, 3, "%02x", data[i]);
   }
   output[len * 2] = '\0';
   return output;
@@ -172,7 +172,7 @@ char *basilisk_url_encode(const char *input) {
     } else if (c == ' ') {
       output[j++] = '+';
     } else {
-      sprintf(output + j, "%%%02X", c);
+      snprintf(output + j, 4, "%%%02X", c);
       j += 3;
     }
   }
@@ -193,7 +193,7 @@ char *basilisk_unicode_escape(const char *input) {
 
   int j = 0;
   for (int i = 0; i < len; i++) {
-    j += sprintf(output + j, "\\u%04x", (unsigned char)input[i]);
+    j += snprintf(output + j, 7, "\\u%04x", (unsigned char)input[i]);
   }
   output[j] = '\0';
   return output;

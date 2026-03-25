@@ -1,111 +1,21 @@
 /**
  * Basilisk Desktop — Scan Module
- * WebSocket event handling, scan lifecycle, findings, severity, timer.
+ * Scan lifecycle, real-time events, findings, severity, and timer.
  */
 
-// ── WebSocket Event Handler ──
-function handleWSEvent(event, data) {
-    switch (event) {
-        case 'scan:status':
-            log('inf', `Scan phase: ${data.phase}`);
-            if (data.phase === 'evolving') {
-                const phase = document.getElementById('scan-phase');
-                if (phase) phase.innerText = 'Smart Prompt Evolution...';
-                log('inf', 'Starting AI-powered prompt evolution loop...');
-            }
-            break;
-        case 'scan:progress':
-            if (data.progress !== undefined) {
-                const bar = document.getElementById('scan-bar');
-                if (bar) bar.style.width = `${Math.round(data.progress * 100)}%`;
-            }
-            if (data.module) {
-                const phase = document.getElementById('scan-phase');
-                if (phase) phase.innerText = data.module;
-            }
-            break;
-        case 'scan:evolution_stats':
-            if (data.stats) {
-                const s = data.stats;
-                const phase = document.getElementById('scan-phase');
-                if (phase) phase.innerText = `Evolution Gen ${s.generation} | Best: ${s.best_fitness?.toFixed(2)} | BT: ${s.breakthroughs}`;
+import {
+    appState,
+    csvList,
+    esc,
+    normalizeSeverity,
+    severityClass,
+    setHidden,
+    setProgress,
+    toggleVisibility,
+} from './shared.js';
+import { apiFetch, log, toast } from './core.js';
 
-                const bar = document.getElementById('scan-bar');
-                if (bar && s.generation && s.total_generations) {
-                    bar.style.width = `${Math.round((s.generation / s.total_generations) * 100)}%`;
-                }
-
-                const safe = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.innerText = val; };
-                safe('evo-gen', s.generation);
-                safe('evo-pop', s.population_size || s.pop_size);
-                safe('evo-fit', s.best_fitness?.toFixed(3));
-                safe('evo-mean', s.mean_fitness?.toFixed(3));
-                safe('evo-diversity', s.diversity !== undefined ? `${(s.diversity * 100).toFixed(0)}%` : undefined);
-                safe('evo-stagnation', s.stagnation_counter);
-                safe('evo-mutrate', s.mutation_rate !== undefined ? `${(s.mutation_rate * 100).toFixed(0)}%` : undefined);
-            }
-            break;
-        case 'scan:finding':
-            if (data.finding) {
-                if (!allFindings.find(x => x.title === data.finding.title && x.attack_module === data.finding.attack_module)) {
-                    allFindings.push(data.finding);
-                    addFinding(document.getElementById('live-findings'), data.finding);
-                    addFinding(document.getElementById('dash-findings'), data.finding);
-                    log('err', `VULN [${data.finding.severity}] ${data.finding.title}`);
-                    updateSev();
-                    updateTable();
-                    const lc = document.getElementById('live-count');
-                    if (lc) lc.innerText = `${allFindings.length} detected`;
-                    document.getElementById('k-findings').innerText = allFindings.length;
-                }
-            }
-            break;
-        case 'scan:profile':
-            if (data.profile) updateRecon(data.profile);
-            break;
-        case 'scan:complete':
-            log('ok', `Scan complete. ${data.total_findings} findings.`);
-            const barFinal = document.getElementById('scan-bar');
-            if (barFinal) barFinal.style.width = '100%';
-            resetScan();
-            const p = document.getElementById('k-posture');
-            if (allFindings.length === 0) { p.innerText = 'SECURE'; p.className = 'kpi-value safe'; }
-            else {
-                const hasCrit = allFindings.some(f => f.severity === 'CRITICAL' || f.severity === 'HIGH');
-                p.innerText = hasCrit ? 'COMPROMISED' : 'AT RISK';
-                p.className = `kpi-value ${hasCrit ? 'danger' : 'warn'}`;
-            }
-            break;
-        case 'scan:error':
-            log('err', `Scan error: ${data.error}`);
-            resetScan();
-            break;
-    }
-}
-
-function updateRecon(profile) {
-    const safe = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val || '—'; };
-    safe('r-model', profile.model_family);
-    safe('r-creator', profile.creator);
-    safe('r-ctx', profile.context_window ? `${profile.context_window}` : null);
-    safe('r-guard', profile.has_guardrails ? 'Yes' : 'No');
-    safe('r-tools', profile.has_tools ? 'Yes' : 'No');
-    safe('r-rag', profile.has_rag ? 'Yes' : 'No');
-}
-
-// ── Timer ──
 const timerEl = document.getElementById('scan-timer');
-function startTimer() {
-    timerStart = Date.now();
-    timerEl.classList.add('on');
-    timerInterval = setInterval(() => {
-        const s = Math.floor((Date.now() - timerStart) / 1000);
-        timerEl.innerText = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-    }, 1000);
-}
-function stopTimer() { clearInterval(timerInterval); timerEl.classList.remove('on'); }
-
-// ── Scan Controls ──
 const btnStart = document.getElementById('btn-scan-start');
 const btnStop = document.getElementById('btn-scan-stop');
 const progressPane = document.getElementById('scan-progress-pane');
@@ -116,176 +26,385 @@ const liveFindings = document.getElementById('live-findings');
 const liveCount = document.getElementById('live-count');
 const scanDot = document.getElementById('scan-dot');
 
-btnStart.addEventListener('click', async () => {
-    const target = document.getElementById('s-target').value.trim();
-    if (!target) { log('err', 'Target URL required.'); return; }
-
-    const cfg = {
-        target,
-        provider: document.getElementById('s-provider').value,
-        model: document.getElementById('s-model').value,
-        api_key: document.getElementById('s-apikey').value,
-        mode: document.getElementById('s-mode').value,
-        evolve: true,
-        generations: parseInt(document.getElementById('s-gens').value) || 5,
-        output_format: document.getElementById('s-format').value,
-        skip_recon: document.getElementById('s-skip-recon').checked,
-        recon_modules: Array.from(document.querySelectorAll('.recon-mod:checked')).map(el => el.value),
-        modules: [],
-        attacker_provider: document.getElementById('s-attacker-provider').value,
-        attacker_model: document.getElementById('s-attacker-model').value,
-        attacker_api_key: document.getElementById('s-attacker-key').value,
-        population_size: parseInt(document.getElementById('s-pop-size').value) || 10,
-        fitness_threshold: parseFloat(document.getElementById('s-fitness-threshold').value) || 0.9,
-        stagnation_limit: parseInt(document.getElementById('s-stagnation').value) || 3,
+function updateRecon(profile) {
+    const safe = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = value || '—';
     };
-
-    btnStart.style.display = 'none';
-    btnStop.style.display = 'flex';
-    progressPane.style.display = 'block';
-    scanBar.style.width = '0%';
-    liveFindings.innerHTML = '';
-    allFindings = [];
-    scanning = true;
-    scanDot.classList.remove('hidden');
-    scanPill.className = `mode-pill ${cfg.mode}`;
-    scanPill.innerText = cfg.mode.toUpperCase();
-    startTimer();
-    log('inf', `Starting ${cfg.mode} scan → ${target}`);
-
-    const res = await apiFetch('/api/scan', { method: 'POST', body: JSON.stringify(cfg) });
-    if (res.session_id) {
-        currentSession = res.session_id;
-        log('ok', `Session: ${currentSession}`);
-        toast('ok', `Scan started successfully! (Session: ${currentSession.slice(0, 8)})`);
-        pollScan();
-    } else {
-        log('err', `Scan failed: ${res.error || 'Unknown'}`);
-        resetScan();
-    }
-});
-
-btnStop.addEventListener('click', async () => {
-    if (currentSession) {
-        await apiFetch(`/api/scan/${currentSession}/stop`, { method: 'POST' });
-        log('inf', 'Scan stopped.');
-        toast('inf', 'Scan stopped by user.');
-        resetScan();
-    }
-});
-
-window.toggleReconDetails = () => {
-    const el = document.getElementById('recon-details');
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-};
-
-window.toggleAttackerDetails = () => {
-    const el = document.getElementById('attacker-details');
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-};
-
-function resetScan() {
-    btnStart.style.display = 'flex';
-    btnStop.style.display = 'none';
-    scanning = false;
-    stopTimer();
-    scanDot.classList.add('hidden');
+    safe('r-model', profile.detected_model);
+    safe('r-creator', profile.provider);
+    safe('r-ctx', profile.context_window ? `${profile.context_window}` : null);
+    safe('r-guard', profile.guardrails?.level || 'unknown');
+    safe('r-tools', profile.detected_tools ? `${profile.detected_tools.length}` : '0');
+    safe('r-rag', profile.rag_detected ? 'Yes' : 'No');
 }
 
-async function pollScan() {
-    if (!scanning || !currentSession) return;
-    const st = await apiFetch(`/api/scan/${currentSession}`);
-    if (st.error) { setTimeout(pollScan, 3000); return; }
-
-    if (st.findings_count !== undefined) {
-        liveCount.innerText = `${st.findings_count} detected`;
-        document.getElementById('k-findings').innerText = st.findings_count;
-    }
-
-    if (st.findings) {
-        st.findings.forEach(f => {
-            if (!allFindings.find(x => x.title === f.title && x.attack_module === f.attack_module)) {
-                allFindings.push(f);
-                addFinding(liveFindings, f);
-                addFinding(document.getElementById('dash-findings'), f);
-                log('err', `VULN [${f.severity}] ${f.title}`);
-            }
-        });
-        updateSev();
-        updateTable();
-    }
-
-    if (st.status === 'complete' || st.status === 'completed') {
-        scanBar.style.width = '100%';
-        log('ok', `Done. ${allFindings.length} findings.`);
-        resetScan();
-        const p = document.getElementById('k-posture');
-        if (allFindings.length === 0) { p.innerText = 'SECURE'; p.className = 'kpi-value safe'; }
-        else {
-            const crit = allFindings.some(f => f.severity === 'CRITICAL' || f.severity === 'HIGH');
-            p.innerText = crit ? 'COMPROMISED' : 'AT RISK';
-            p.className = `kpi-value ${crit ? 'danger' : 'warn'}`;
-        }
-        return;
-    }
-
-    if (st.status?.startsWith('attacking:')) scanPhase.innerText = st.status.split(':')[1];
-    setTimeout(pollScan, 2000);
+function startTimer() {
+    appState.timerStart = Date.now();
+    timerEl.classList.add('on');
+    appState.timerInterval = setInterval(() => {
+        const seconds = Math.floor((Date.now() - appState.timerStart) / 1000);
+        timerEl.innerText = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    }, 1000);
 }
 
-// ── Finding Card ──
-function addFinding(container, f) {
+function stopTimer() {
+    clearInterval(appState.timerInterval);
+    appState.timerInterval = null;
+    timerEl.classList.remove('on');
+}
+
+function addFinding(container, finding) {
     if (container.querySelector('.empty-msg')) container.innerHTML = '';
-    const sev = f.severity || 'MEDIUM';
+    const sev = normalizeSeverity(finding.severity);
     const el = document.createElement('div');
-    el.className = `fc ${sev}`;
-    el.dataset.severity = sev;
+    el.className = `fc ${sev.toLowerCase()}`;
+    el.dataset.severity = sev.toLowerCase();
     el.innerHTML = `
-        <div class="fc-top"><span class="fc-name">${esc(f.title || f.type || 'Finding')}</span><div class="fc-tags"><span class="badge-owasp">${esc(f.owasp_id || f.category || '')}</span><span class="badge-sev ${sev}">${sev}</span></div></div>
-        <div class="fc-desc">${esc(f.description || '')}</div>
-        ${f.payload ? `<div class="fc-payload">${esc(trunc(f.payload, 200))}</div>` : ''}
-        ${f.confidence !== undefined ? `<div class="fc-conf">Confidence: ${(f.confidence * 100).toFixed(0)}%</div>` : ''}
+        <div class="fc-top"><span class="fc-name">${esc(finding.title || finding.type || 'Finding')}</span><div class="fc-tags"><span class="badge-owasp">${esc(finding.owasp_id || finding.category || '')}</span><span class="badge-sev ${severityClass(finding.severity)}">${severityClass(finding.severity)}</span></div></div>
+        <div class="fc-desc">${esc(finding.description || '')}</div>
+        ${finding.payload ? `<div class="fc-payload">${esc(String(finding.payload).slice(0, 200))}</div>` : ''}
+        ${finding.confidence !== undefined ? `<div class="fc-conf">Confidence: ${(finding.confidence * 100).toFixed(0)}%</div>` : ''}
     `;
     container.insertBefore(el, container.firstChild);
 }
 
-// ── Severity Counts ──
-function updateSev() {
-    const c = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
-    allFindings.forEach(f => { if (c[f.severity] !== undefined) c[f.severity]++; });
-    document.getElementById('sc-crit').innerText = c.CRITICAL;
-    document.getElementById('sc-high').innerText = c.HIGH;
-    document.getElementById('sc-med').innerText = c.MEDIUM;
-    document.getElementById('sc-low').innerText = c.LOW;
-    const b = document.getElementById('b-findings');
-    if (allFindings.length > 0) { b.innerText = allFindings.length; b.classList.remove('hidden'); }
+function updateSeverityCounts() {
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    appState.allFindings.forEach((finding) => {
+        const key = normalizeSeverity(finding.severity).toLowerCase();
+        if (counts[key] !== undefined) counts[key] += 1;
+    });
+    document.getElementById('sc-crit').innerText = counts.critical;
+    document.getElementById('sc-high').innerText = counts.high;
+    document.getElementById('sc-med').innerText = counts.medium;
+    document.getElementById('sc-low').innerText = counts.low;
+    const badge = document.getElementById('b-findings');
+    if (appState.allFindings.length > 0) {
+        badge.innerText = appState.allFindings.length;
+        badge.classList.remove('hidden');
+    }
 }
 
-// ── Findings Table ──
-function updateTable() {
-    const tb = document.getElementById('find-tbody');
-    tb.innerHTML = '';
-    if (!allFindings.length) { tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-3);padding:24px">No findings.</td></tr>'; return; }
-    allFindings.forEach(f => {
+function updateFindingsTable() {
+    const tbody = document.getElementById('find-tbody');
+    tbody.innerHTML = '';
+    if (!appState.allFindings.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-table-cell">No findings.</td></tr>';
+        return;
+    }
+    appState.allFindings.forEach((finding) => {
+        const sev = normalizeSeverity(finding.severity);
         const tr = document.createElement('tr');
-        tr.dataset.severity = f.severity;
-        tr.innerHTML = `<td><span class="badge-sev ${f.severity}">${f.severity}</span></td><td><span class="badge-owasp">${esc(f.owasp_id || f.category || '—')}</span></td><td>${esc(f.attack_module || '—')}</td><td style="color:var(--text-1)">${esc(f.title || '—')}</td><td>${f.confidence ? `${(f.confidence * 100).toFixed(0)}%` : '—'}</td>`;
-        tb.appendChild(tr);
+        tr.dataset.severity = sev.toLowerCase();
+        tr.innerHTML = `
+            <td><span class="badge-sev ${severityClass(finding.severity)}">${severityClass(finding.severity)}</span></td>
+            <td><span class="badge-owasp">${esc(finding.owasp_id || finding.category || '—')}</span></td>
+            <td>${esc(finding.attack_module || '—')}</td>
+            <td class="table-text-primary">${esc(finding.title || '—')}</td>
+            <td>${finding.confidence ? `${(finding.confidence * 100).toFixed(0)}%` : '—'}</td>
+        `;
+        tbody.appendChild(tr);
     });
 }
 
-// ── Filters ──
-document.querySelectorAll('.filters').forEach(bar => {
-    bar.querySelectorAll('.fbtn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            bar.querySelectorAll('.fbtn').forEach(b => b.classList.remove('on'));
-            btn.classList.add('on');
-            const sev = btn.dataset.sev;
-            const container = bar.closest('.pane')?.querySelector('.pane-body, tbody');
-            if (!container) return;
-            container.querySelectorAll('.fc, tr[data-severity]').forEach(el => {
-                el.style.display = sev === 'all' ? '' : (el.dataset.severity === sev ? '' : 'none');
+function resetScan() {
+    setHidden(btnStart, false);
+    btnStart.classList.add('display-flex');
+    setHidden(btnStop, true);
+    btnStop.classList.remove('display-flex');
+    appState.scanning = false;
+    appState.pendingStop = false;
+    stopTimer();
+    scanDot.classList.add('hidden');
+}
+
+function updatePostureSummary() {
+    const posture = document.getElementById('k-posture');
+    if (!posture) return;
+    if (appState.allFindings.length === 0) {
+        posture.innerText = 'SECURE';
+        posture.className = 'kpi-value safe';
+        return;
+    }
+    const critical = appState.allFindings.some((finding) => ['CRITICAL', 'HIGH'].includes(normalizeSeverity(finding.severity)));
+    posture.innerText = critical ? 'COMPROMISED' : 'AT RISK';
+    posture.className = `kpi-value ${critical ? 'danger' : 'warn'}`;
+}
+
+async function pollScan() {
+    if (!appState.scanning || !appState.currentSession) return;
+    const status = await apiFetch(`/api/scan/${appState.currentSession}`);
+    if (status.error) {
+        setTimeout(pollScan, 3000);
+        return;
+    }
+
+    if (status.profile) updateRecon(status.profile);
+
+    if (status.progress && typeof status.progress.progress === 'number') {
+        setProgress(scanBar, status.progress.progress * 100);
+    }
+    if (status.progress?.module) {
+        scanPhase.innerText = status.progress.module;
+    } else if (status.progress?.phase) {
+        scanPhase.innerText = status.progress.phase;
+    } else if (status.current_phase) {
+        scanPhase.innerText = status.current_phase;
+    }
+
+    const findingsCount = status.findings_count ?? status.total_findings ?? status.summary?.total_findings;
+    if (findingsCount !== undefined) {
+        liveCount.innerText = `${findingsCount} detected`;
+        document.getElementById('k-findings').innerText = findingsCount;
+    }
+
+    if (Array.isArray(status.findings)) {
+        status.findings.forEach((finding) => {
+            if (!appState.allFindings.find((existing) => existing.title === finding.title && existing.attack_module === finding.attack_module)) {
+                appState.allFindings.push(finding);
+                addFinding(liveFindings, finding);
+                addFinding(document.getElementById('dash-findings'), finding);
+                log('err', `VULN [${normalizeSeverity(finding.severity)}] ${finding.title}`);
+            }
+        });
+        updateSeverityCounts();
+        updateFindingsTable();
+    }
+
+    if (status.status === 'complete' || status.status === 'completed') {
+        setProgress(scanBar, 100);
+        log('ok', `Scan complete. ${findingsCount ?? appState.allFindings.length} findings.`);
+        resetScan();
+        updatePostureSummary();
+        return;
+    }
+    if (status.status === 'stopped') {
+        log('inf', 'Scan stopped.');
+        resetScan();
+        return;
+    }
+    if (status.status === 'error' || status.status === 'failed') {
+        log('err', 'Scan failed.');
+        resetScan();
+        return;
+    }
+
+    if (status.status?.startsWith('attacking:')) {
+        scanPhase.innerText = status.status.split(':')[1];
+    }
+    setTimeout(pollScan, 2000);
+}
+
+export function handleScanEvent(event, data) {
+    switch (event) {
+        case 'scan:status':
+            log('inf', `Scan phase: ${data.phase}`);
+            if (data.phase === 'evolving') {
+                scanPhase.innerText = 'Smart Prompt Evolution...';
+                log('inf', 'Starting AI-powered prompt evolution loop...');
+            }
+            break;
+        case 'scan:progress':
+            if (data.progress !== undefined) {
+                setProgress(scanBar, data.progress * 100);
+            }
+            if (data.module) {
+                scanPhase.innerText = data.module;
+            }
+            break;
+        case 'scan:evolution_stats':
+            if (data.stats) {
+                const stats = data.stats;
+                scanPhase.innerText = `Evolution Gen ${stats.generation} | Best: ${stats.best_fitness?.toFixed(2)} | BT: ${stats.breakthroughs}`;
+                if (scanBar && stats.generation && stats.total_generations) {
+                    setProgress(scanBar, (stats.generation / stats.total_generations) * 100);
+                }
+                const safe = (id, value) => {
+                    const el = document.getElementById(id);
+                    if (el && value !== undefined) el.innerText = value;
+                };
+                safe('evo-gen', stats.generation);
+                safe('evo-pop', stats.population_size || stats.pop_size);
+                safe('evo-fit', stats.best_fitness?.toFixed(3));
+                safe('evo-mean', stats.mean_fitness?.toFixed(3));
+                safe('evo-diversity', stats.diversity !== undefined ? `${(stats.diversity * 100).toFixed(0)}%` : undefined);
+                safe('evo-stagnation', stats.stagnation_counter);
+                safe('evo-mutrate', stats.mutation_rate !== undefined ? `${(stats.mutation_rate * 100).toFixed(0)}%` : undefined);
+                safe('evo-cache-hits', stats.cache_hits);
+                safe('evo-novelty', stats.novelty_score !== undefined ? stats.novelty_score.toFixed(3) : undefined);
+                safe('evo-intent-drift', stats.intent_drift !== undefined ? `${(stats.intent_drift * 100).toFixed(0)}%` : undefined);
+                safe('evo-saved', stats.api_calls_saved);
+            }
+            break;
+        case 'scan:finding':
+            if (data.finding && !appState.allFindings.find((existing) => existing.title === data.finding.title && existing.attack_module === data.finding.attack_module)) {
+                appState.allFindings.push(data.finding);
+                addFinding(document.getElementById('live-findings'), data.finding);
+                addFinding(document.getElementById('dash-findings'), data.finding);
+                log('err', `VULN [${normalizeSeverity(data.finding.severity)}] ${data.finding.title}`);
+                updateSeverityCounts();
+                updateFindingsTable();
+                liveCount.innerText = `${appState.allFindings.length} detected`;
+                document.getElementById('k-findings').innerText = appState.allFindings.length;
+            }
+            break;
+        case 'scan:profile':
+            if (data.profile) updateRecon(data.profile);
+            break;
+        case 'scan:complete':
+            log('ok', `Scan complete. ${data.total_findings} findings.`);
+            setProgress(scanBar, 100);
+            resetScan();
+            updatePostureSummary();
+            break;
+        case 'scan:error':
+            log('err', `Scan error: ${data.error}`);
+            resetScan();
+            break;
+        default:
+            break;
+    }
+}
+
+export function initScan() {
+    btnStart?.addEventListener('click', async () => {
+        const target = document.getElementById('s-target').value.trim();
+        if (!target) {
+            log('err', 'Target URL required.');
+            return;
+        }
+
+        const cfg = {
+            target,
+            provider: document.getElementById('s-provider').value,
+            model: document.getElementById('s-model').value,
+            api_key: document.getElementById('s-apikey').value,
+            mode: document.getElementById('s-mode').value,
+            evolve: true,
+            generations: parseInt(document.getElementById('s-gens').value, 10) || 5,
+            output_format: document.getElementById('s-format').value,
+            include_research_modules: document.getElementById('s-include-research').checked,
+            skip_recon: document.getElementById('s-skip-recon').checked,
+            recon_modules: Array.from(document.querySelectorAll('.recon-mod:checked')).map((el) => el.value),
+            modules: [],
+            attacker_provider: document.getElementById('s-attacker-provider').value,
+            attacker_model: document.getElementById('s-attacker-model').value,
+            attacker_api_key: document.getElementById('s-attacker-key').value,
+            population_size: parseInt(document.getElementById('s-pop-size').value, 10) || 10,
+            fitness_threshold: parseFloat(document.getElementById('s-fitness-threshold').value) || 0.9,
+            stagnation_limit: parseInt(document.getElementById('s-stagnation').value, 10) || 3,
+            exit_on_first: document.getElementById('s-exit-on-first').checked,
+            enable_cache: document.getElementById('s-cache').checked,
+            diversity_mode: document.getElementById('s-diversity-mode').value,
+            intent_weight: parseFloat(document.getElementById('s-intent-weight').value) || 0.15,
+            campaign: {
+                name: document.getElementById('s-campaign-name').value.trim(),
+                objective: {
+                    name: document.getElementById('s-objective').value.trim(),
+                    hypothesis: document.getElementById('s-hypothesis').value.trim(),
+                },
+                authorization: {
+                    operator: document.getElementById('s-operator').value.trim(),
+                    ticket_id: document.getElementById('s-ticket').value.trim(),
+                    target_owner: document.getElementById('s-target-owner').value.trim(),
+                    scope_targets: csvList(document.getElementById('s-scope-targets').value),
+                    approved: document.getElementById('s-approval-confirmed').checked,
+                },
+            },
+            policy: {
+                execution_mode: document.getElementById('s-execution-mode').value,
+                evidence_threshold: document.getElementById('s-evidence-threshold').value,
+                aggression: parseInt(document.getElementById('s-aggression').value, 10) || 3,
+                max_concurrency: parseInt(document.getElementById('s-max-concurrency').value, 10) || 5,
+                request_budget: parseInt(document.getElementById('s-request-budget').value, 10) || 0,
+                rate_limit_delay: parseFloat(document.getElementById('s-rate-limit-delay').value) || 0,
+                raw_evidence_mode: document.getElementById('s-raw-evidence-mode').value,
+                retain_days: parseInt(document.getElementById('s-retain-days').value, 10) || 30,
+                allow_modules: csvList(document.getElementById('s-allow-modules').value),
+                deny_modules: csvList(document.getElementById('s-deny-modules').value),
+                dry_run: document.getElementById('s-dry-run').checked,
+                approval_required: document.getElementById('s-approval-required').checked,
+                approval_confirmed: document.getElementById('s-approval-confirmed').checked,
+                retain_raw_findings: document.getElementById('s-retain-raw').checked,
+                retain_conversations: document.getElementById('s-retain-conversations').checked,
+            },
+        };
+
+        setHidden(btnStart, true);
+        setHidden(btnStop, false);
+        btnStop.classList.add('display-flex');
+        setHidden(progressPane, false);
+        appState.currentSession = null;
+        appState.pendingStop = false;
+        appState.allFindings = [];
+        liveFindings.innerHTML = '';
+        liveFindings.innerHTML = '<div class="empty-msg">Findings appear here during scan.</div>';
+        setProgress(scanBar, 0);
+        appState.scanning = true;
+        scanDot.classList.remove('hidden');
+        scanPill.className = `mode-pill ${cfg.mode}`;
+        scanPill.innerText = cfg.mode.toUpperCase();
+        const governance = document.getElementById('scan-governance');
+        if (governance) {
+            const ticket = cfg.campaign.authorization.ticket_id || 'no-ticket';
+            const operator = cfg.campaign.authorization.operator || 'unassigned';
+            governance.innerText = `${cfg.policy.execution_mode} | ${cfg.policy.evidence_threshold} evidence | retain ${cfg.policy.retain_days}d | ${operator} | ${ticket}`;
+        }
+        startTimer();
+        log('inf', `Starting ${cfg.mode} scan → ${target}`);
+
+        const result = await apiFetch('/api/scan', { method: 'POST', body: cfg });
+        if (result.session_id) {
+            appState.currentSession = result.session_id;
+            log('ok', `Session: ${appState.currentSession}`);
+            toast('ok', `Scan started successfully! (Session: ${appState.currentSession.slice(0, 8)})`);
+            if (appState.pendingStop) {
+                await apiFetch(`/api/scan/${appState.currentSession}/stop`, { method: 'POST' });
+                appState.pendingStop = false;
+                log('inf', 'Scan stopped.');
+                toast('inf', 'Scan stopped by user.');
+                resetScan();
+                return;
+            }
+            pollScan();
+        } else {
+            log('err', `Scan failed: ${result.error || 'Unknown'}`);
+            resetScan();
+        }
+    });
+
+    btnStop?.addEventListener('click', async () => {
+        if (appState.currentSession) {
+            await apiFetch(`/api/scan/${appState.currentSession}/stop`, { method: 'POST' });
+            log('inf', 'Scan stopped.');
+            toast('inf', 'Scan stopped by user.');
+            resetScan();
+        } else if (appState.scanning) {
+            appState.pendingStop = true;
+            log('inf', 'Stop requested. Waiting for scan session to initialize...');
+        }
+    });
+
+    document.getElementById('btn-toggle-recon')?.addEventListener('click', () => {
+        toggleVisibility(document.getElementById('recon-details'), 'display-block');
+    });
+    document.getElementById('btn-toggle-attacker')?.addEventListener('click', () => {
+        toggleVisibility(document.getElementById('attacker-details'), 'display-block');
+    });
+
+    document.querySelectorAll('.filters').forEach((bar) => {
+        bar.querySelectorAll('.fbtn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                bar.querySelectorAll('.fbtn').forEach((entry) => entry.classList.remove('on'));
+                btn.classList.add('on');
+                const sev = btn.dataset.sev;
+                const container = bar.closest('.pane')?.querySelector('.pane-body, tbody');
+                if (!container) return;
+                container.querySelectorAll('.fc, tr[data-severity]').forEach((el) => {
+                    el.classList.toggle('is-hidden', sev !== 'all' && el.dataset.severity !== sev.toLowerCase());
+                });
             });
         });
     });
-});
+}

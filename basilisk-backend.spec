@@ -1,7 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Basilisk v1.1.0 — PyInstaller spec for the desktop backend sidecar binary.
-# Bundles the full backend: core engine, attack modules (8 categories, 32 sub-modules),
-# evolution engine (SPE-NL), providers, recon, payloads, reports, CLI, and all deps.
+# Basilisk v2.0.0 — PyInstaller spec for the desktop backend sidecar binary.
+# Bundles the full backend: core engine, attack modules (9 categories, 33 sub-modules),
+# evolution engine (SPE-NL + cache, diversity, intent), providers, recon, payloads,
+# reports, CLI, and all deps.
 #
 # Usage:
 #   cd /path/to/basilisk            (project root, not desktop/)
@@ -18,7 +19,7 @@
 
 from PyInstaller.utils.hooks import collect_data_files
 
-all_datas = collect_data_files('certifi') + collect_data_files('litellm') + [
+all_datas = collect_data_files('certifi') + collect_data_files('litellm') + collect_data_files('basilisk.eval') + [
     # Payload YAML database
     ('basilisk/payloads', 'basilisk/payloads'),
     # Jinja2 report templates
@@ -44,18 +45,38 @@ a = Analysis(
         'basilisk.core',
         'basilisk.core.config',
         'basilisk.core.database',
+        'basilisk.core.evidence',
         'basilisk.core.finding',
         'basilisk.core.profile',
         'basilisk.core.session',
         'basilisk.core.refusal',
         'basilisk.core.models',
+        'basilisk.runtime',
+        'basilisk.runtime.orchestrator',
 
-        # ── New v1.0.3 Modules ──
+        # ── v2.0 Platform Modules ──
         'basilisk.core.audit',
         'basilisk.differential',
         'basilisk.posture',
+        'basilisk.core.secrets',
+        'basilisk.core.retention',
+        'basilisk.core.schema',
+        'basilisk.campaign',
+        'basilisk.campaign.graph',
+        'basilisk.campaign.models',
+        'basilisk.policy',
+        'basilisk.policy.models',
+        'basilisk.policy.finding',
+        'basilisk.api',
+        'basilisk.api.shared',
+        'basilisk.api.scan',
+        'basilisk.api.sessions',
+        'basilisk.api.modules',
+        'basilisk.api.reports',
+        'basilisk.api.settings',
+        'basilisk.api.eval',
 
-        # ── Attack Modules (8 categories, 29 sub-modules) ──
+        # ── Attack Modules (9 categories, 33 sub-modules) ──
         'basilisk.attacks',
         'basilisk.attacks.base',
         # Injection
@@ -106,14 +127,33 @@ a = Analysis(
         'basilisk.attacks.rag.poisoning',
         'basilisk.attacks.rag.document_injection',
         'basilisk.attacks.rag.knowledge_enum',
+        # Multimodal (P3)
+        'basilisk.attacks.multimodal',
 
-        # ── Evolution Engine (SPE-NL) ──
+        # ── Evolution Engine (SPE-NL + P0/P1/P2 enhancements) ──
         'basilisk.evolution',
         'basilisk.evolution.engine',
         'basilisk.evolution.operators',
         'basilisk.evolution.fitness',
         'basilisk.evolution.population',
         'basilisk.evolution.crossover',
+        'basilisk.evolution.cache',
+        'basilisk.evolution.diversity',
+        'basilisk.evolution.intent',
+        'basilisk.evolution.curiosity',
+
+        # ── Eval Pipeline (P5) ──
+        'basilisk.eval',
+        'basilisk.eval.config',
+        'basilisk.eval.assertions',
+        'basilisk.eval.runner',
+        'basilisk.eval.report',
+
+        # ── Probe Library (P4) ──
+        'basilisk.payloads',
+        'basilisk.payloads.loader',
+        'basilisk.payloads.effectiveness',
+
 
         # ── Provider Adapters ──
         'basilisk.providers',
@@ -186,6 +226,19 @@ a = Analysis(
         'rich.panel',
         'rich.progress',
         'jinja2',
+
+        # ── Optional: Multimodal (Pillow) ──
+        'PIL',
+        'PIL.Image',
+        'PIL.ImageDraw',
+        'PIL.ImageFont',
+
+        # ── Optional: Intent scoring ──
+        'sklearn',
+        'sklearn.feature_extraction',
+        'sklearn.feature_extraction.text',
+        'sklearn.metrics',
+        'sklearn.metrics.pairwise',
 
         # ── pkg_resources / setuptools chain (jaraco crash fix) ──
         'pkg_resources',

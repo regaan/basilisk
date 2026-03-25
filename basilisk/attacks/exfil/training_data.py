@@ -43,6 +43,11 @@ class TrainingDataExfil(BasiliskAttack):
                 for pattern in SENSITIVE_PATTERNS:
                     matches = re.findall(pattern, resp.content, re.IGNORECASE)
                     if matches:
+                        signal = self.pattern_signal(
+                            name="sensitive_pattern_match",
+                            matches=[str(m) for m in matches[:5]],
+                            summary="Response matched a sensitive data leakage pattern.",
+                        )
                         finding = self.create_finding(
                             title=f"Sensitive Data Leaked: {pattern[:30]}",
                             payload=payload, response=resp.content[:500],
@@ -50,6 +55,8 @@ class TrainingDataExfil(BasiliskAttack):
                             description=f"Model output matched sensitive pattern. Matches: {matches[:3]}",
                             remediation="Implement output filtering for PII and credential patterns.",
                             confidence=0.85,
+                            evidence_signals=[signal],
+                            evidence_artifacts={"pattern": pattern, "matches": matches[:5]},
                         )
                         findings.append(finding)
                         await session.add_finding(finding)

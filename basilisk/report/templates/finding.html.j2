@@ -1,36 +1,102 @@
-<div class="finding" style="border-left: 4px solid {{ color }};">
-    <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem;">
-        <span class="sev-badge" style="background:{{ color }};">{{ severity }}</span>
-        <span style="color:#737373;font-size:.8rem;">{{ id }}</span>
-        <span style="color:#22d3ee;font-size:.8rem;">{{ owasp_id }}</span>
-        {% if evolution_gen %}
-        <span style="color:#a78bfa;font-size:.75rem;background:#1e1b4b;padding:2px 8px;border-radius:3px;">Gen {{ evolution_gen }}</span>
+<div class="finding" style="border-left: 4px solid {{ finding.color }};">
+    <div class="finding-hdr">
+        <span class="sev-badge" style="background:{{ finding.color }};">{{ finding.severity }}</span>
+        <span class="finding-id">{{ finding.id }}</span>
+        <span class="owasp">{{ finding.owasp }}</span>
+        <span class="tier-pill">{{ finding.module_trust_tier|upper }}</span>
+        {% if finding.evolution_generation %}
+        <span class="evo-badge">Gen {{ finding.evolution_generation }}</span>
         {% endif %}
     </div>
-    <h3>{{ title }}</h3>
-    <p style="color:#a3a3a3;font-size:.9rem;">{{ description }}</p>
-    <div style="display:flex;gap:1.5rem;margin:.5rem 0;font-size:.85rem;color:#a3a3a3;">
-        <span>Module: <code>{{ module }}</code></span>
-        <span>Confidence: <strong>{{ confidence }}</strong></span>
+    <h3>{{ finding.title }}</h3>
+    <p class="desc">{{ finding.description }}</p>
+    <div class="meta-row">
+        <span>Module: <code>{{ finding.module }}</code></span>
+        <span>Confidence: <strong>{{ finding.confidence }}</strong></span>
+        {% if finding.evidence %}
+        <span>Evidence: <strong>{{ finding.evidence.verdict }}</strong></span>
+        <span>Basis: <strong>{{ finding.evidence.confidence_basis }}</strong></span>
+        {% endif %}
     </div>
+    {% if finding.policy_downgraded %}
+    <div class="downgraded">
+        Downgraded from <strong>{{ finding.original_severity|upper }}</strong> because required evidence was incomplete.
+        {% if finding.missing_evidence_requirements %}
+        Missing: {{ finding.missing_evidence_requirements|join(", ") }}.
+        {% endif %}
+    </div>
+    {% endif %}
+    {% if finding.module_success_criteria %}
+    <details>
+        <summary>Module Maturity</summary>
+        <h4>Success Criteria</h4>
+        <ul class="signal-list">
+            {% for criterion in finding.module_success_criteria %}
+            <li>{{ criterion }}</li>
+            {% endfor %}
+        </ul>
+        {% if finding.module_evidence_requirements %}
+        <h4>Required Proof</h4>
+        <ul class="signal-list">
+            {% for requirement in finding.module_evidence_requirements %}
+            <li><code>{{ requirement }}</code></li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </details>
+    {% endif %}
     <details>
         <summary>Payload</summary>
-        <pre><code>{{ payload }}</code></pre>
+        <pre><code>{{ finding.payload }}</code></pre>
     </details>
     <details>
         <summary>Response</summary>
-        <pre><code>{{ response }}</code></pre>
+        <pre><code>{{ finding.response }}</code></pre>
     </details>
-    {% if conversation %}
-    <div style="margin-top:1rem;border-top:1px solid #262626;padding-top:.8rem;">
-        <h4 style="font-size:.85rem;color:#a3a3a3;">Conversation Replay</h4>
-        {% for msg in conversation %}
-        <div style="padding:.5rem;margin:.3rem 0;border-radius:4px;font-size:.85rem;{% if msg.role == 'user' %}background:#1e293b;{% else %}background:#1a2e1a;{% endif %}">
-            <span style="font-weight:600;margin-right:.5rem;{% if msg.role == 'user' %}color:#60a5fa;{% else %}color:#4ade80;{% endif %}">{{ msg.role }}</span>
-            <span style="color:#d4d4d4;">{{ msg.content }}</span>
+    {% if finding.evidence %}
+    <details>
+        <summary>Evidence</summary>
+        <div class="meta-row">
+            <span>Verdict: <strong>{{ finding.evidence.verdict }}</strong></span>
+            <span>Confidence: <strong>{{ finding.evidence.confidence }}</strong></span>
+            <span>Basis: <strong>{{ finding.evidence.confidence_basis }}</strong></span>
+        </div>
+        {% if finding.evidence.notes %}
+        <h4>Evidence Notes</h4>
+        <ul class="signal-list">
+            {% for note in finding.evidence.notes %}
+            <li>{{ note }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if finding.evidence.signals %}
+        <h4>Signals</h4>
+        <ul class="signal-list">
+            {% for signal in finding.evidence.signals %}
+            <li><strong>{{ signal.kind }}</strong> / <code>{{ signal.name }}</code>: {{ signal.summary }}{% if signal.details %} ({{ signal.details }}){% endif %}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if finding.evidence.replay_steps %}
+        <h4>Replay Steps</h4>
+        <ol class="signal-list">
+            {% for step in finding.evidence.replay_steps %}
+            <li>{{ step }}</li>
+            {% endfor %}
+        </ol>
+        {% endif %}
+    </details>
+    {% endif %}
+    {% if finding.conversation %}
+    <div class="conversation">
+        <h4>Conversation Replay</h4>
+        {% for msg in finding.conversation %}
+        <div class="msg {% if msg.role == 'user' %}msg-user{% else %}msg-assistant{% endif %}">
+            <span class="role">{{ msg.role }}</span>
+            <span class="content">{{ msg.content }}</span>
         </div>
         {% endfor %}
     </div>
     {% endif %}
-    <p class="remediation"><strong>Remediation:</strong> {{ remediation }}</p>
+    <p class="remediation"><strong>Remediation:</strong> {{ finding.remediation }}</p>
 </div>

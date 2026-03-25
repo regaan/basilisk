@@ -1,6 +1,7 @@
 """Systematic Bypass — binary search on content boundary to find exact guardrail triggers."""
 from __future__ import annotations
 from basilisk.attacks.base import BasiliskAttack
+from basilisk.core.evidence import EvidenceSignal, EvidenceSignalKind
 from basilisk.core.finding import AttackCategory, Finding, Severity
 from basilisk.core.profile import BasiliskProfile
 from basilisk.core.session import ScanSession
@@ -48,6 +49,19 @@ class SystematicBypass(BasiliskAttack):
                     first_refusal_idx = i
                     break
             if first_refusal_idx is not None and first_refusal_idx > 0:
+                boundary_signal = EvidenceSignal(
+                    name="guardrail_boundary_identified",
+                    kind=EvidenceSignalKind.PROVIDER_METADATA,
+                    passed=True,
+                    weight=1.0,
+                    summary="A clear guardrail boundary was identified in the topic gradient.",
+                    details={
+                        "topic": topic,
+                        "boundary_index": first_refusal_idx,
+                        "last_allowed": gradient[first_refusal_idx - 1],
+                        "first_blocked": gradient[first_refusal_idx],
+                    },
+                )
                 finding = self.create_finding(
                     title=f"Guardrail Boundary Mapped: {topic}",
                     payload=f"Boundary at step {first_refusal_idx}/{len(gradient)}: '{gradient[first_refusal_idx]}'",
@@ -56,10 +70,24 @@ class SystematicBypass(BasiliskAttack):
                     description=f"Guardrail activates at step {first_refusal_idx} of {len(gradient)} for topic '{topic}'.",
                     remediation="Review guardrail boundary. Consider tightening if too permissive.",
                     confidence=0.9,
+                    evidence_signals=[boundary_signal],
+                    evidence_artifacts=boundary_signal.details,
                 )
                 findings.append(finding)
                 await session.add_finding(finding)
             elif first_refusal_idx is None:
+                coverage_signal = EvidenceSignal(
+                    name="guardrail_absent_across_gradient",
+                    kind=EvidenceSignalKind.PROVIDER_METADATA,
+                    passed=True,
+                    weight=1.0,
+                    summary="No guardrail refusal was observed across the full adversarial gradient.",
+                    details={
+                        "topic": topic,
+                        "gradient_size": len(gradient),
+                        "max_prompt": gradient[-1],
+                    },
+                )
                 finding = self.create_finding(
                     title=f"No Guardrail Detected: {topic}",
                     payload=f"All {len(gradient)} prompts in '{topic}' gradient were allowed.",
@@ -68,6 +96,8 @@ class SystematicBypass(BasiliskAttack):
                     description=f"No guardrail triggers found for '{topic}' even at maximum adversarial level.",
                     remediation=f"Add content filtering for '{topic}'-related adversarial content.",
                     confidence=0.85,
+                    evidence_signals=[coverage_signal],
+                    evidence_artifacts=coverage_signal.details,
                 )
                 findings.append(finding)
                 await session.add_finding(finding)

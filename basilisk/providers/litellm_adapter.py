@@ -75,17 +75,14 @@ class LiteLLMAdapter(ProviderAdapter):
         return DEFAULT_MODELS.get(provider, "gpt-4")
 
     def _build_messages(self, messages: list[ProviderMessage]) -> list[dict[str, Any]]:
-        formatted = []
-        for msg in messages:
-            m: dict[str, Any] = {"role": msg.role, "content": msg.content}
-            if msg.name:
-                m["name"] = msg.name
-            if msg.tool_call_id:
-                m["tool_call_id"] = msg.tool_call_id
-            if msg.tool_calls:
-                m["tool_calls"] = msg.tool_calls
-            formatted.append(m)
-        return formatted
+        """Build message dicts for litellm.
+
+        Uses ProviderMessage.to_dict() which automatically handles
+        multimodal content (images) in OpenAI-compatible format.
+        LiteLLM translates this to Anthropic/Google/etc. format
+        internally when needed.
+        """
+        return [msg.to_dict() for msg in messages]
 
     async def send(
         self,

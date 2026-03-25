@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Basilisk Native Extensions — Build Script v1.1.0
+# Basilisk Native Extensions — Build Script v2.0.0
 #
 # Compiles Go and C native performance modules into shared libraries
 # that Python loads via ctypes for 10-100x speedup on hot paths.
@@ -31,6 +31,50 @@ NC='\033[0m'
 log_info()  { echo -e "${GREEN}[BUILD]${NC} $*"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
+
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    else
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
+
+write_manifest() {
+    local target_dir="$1"
+    local manifest_path="${target_dir}/manifest.json"
+    local first=1
+
+    {
+        echo '{'
+        echo '  "version": 1,'
+        echo '  "libraries": {'
+        for lib_path in "${target_dir}"/libbasilisk_*"${SO_EXT}"; do
+            [ -f "${lib_path}" ] || continue
+            local name
+            name="$(basename "${lib_path}")"
+            local digest
+            digest="$(sha256_file "${lib_path}")"
+            if [ ${first} -eq 0 ]; then
+                echo ','
+            fi
+            printf '    "%s": {"sha256": "%s"}' "${name}" "${digest}"
+            first=0
+        done
+        echo ''
+        echo '  }'
+        echo '}'
+    } > "${manifest_path}"
+    log_info "  → manifest.json"
+}
+
+sign_manifests() {
+    local py="${PYTHON:-python3}"
+    "${py}" "${SCRIPT_DIR}/../scripts/sign_native_manifests.py" \
+        "${BUILD_DIR}/manifest.json" \
+        "${LIB_DIR}/manifest.json"
+    log_info "  → manifest.sig"
+}
 
 # Detect platform
 ARCH=$(uname -m)
@@ -75,6 +119,10 @@ build_c() {
         cp "${BUILD_DIR}/libbasilisk_encoder${SO_EXT}" "${LIB_DIR}/libbasilisk_encoder.dll"
     fi
 
+    write_manifest "${BUILD_DIR}"
+    write_manifest "${LIB_DIR}"
+    sign_manifests
+
     log_info "C extensions built successfully"
 }
 
@@ -117,6 +165,10 @@ build_go() {
     if [ -f "${BUILD_DIR}/libbasilisk_matcher.h" ]; then
         cp "${BUILD_DIR}/libbasilisk_matcher.h" "${LIB_DIR}/"
     fi
+
+    write_manifest "${BUILD_DIR}"
+    write_manifest "${LIB_DIR}"
+    sign_manifests
 
     log_info "Go extensions built successfully"
 }
@@ -191,7 +243,7 @@ verify() {
 }
 
 show_info() {
-    echo "Basilisk Native Extensions v1.1.0"
+    echo "Basilisk Native Extensions v2.0.0"
     echo ""
     echo "Platform:  ${OS}/${ARCH}"
     echo "Extension: ${SO_EXT}"
@@ -211,7 +263,7 @@ show_info() {
 }
 
 show_help() {
-    echo "Basilisk Native Extensions Build System v1.1.0"
+    echo "Basilisk Native Extensions Build System v2.0.0"
     echo ""
     echo "Usage: $0 [command]"
     echo ""

@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Render GitHub release notes with build trust labels."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+
+def load_statuses(artifacts_root: Path) -> dict[str, dict]:
+    statuses: dict[str, dict] = {}
+    for path in sorted(artifacts_root.rglob("basilisk-build-metadata.json")):
+        data = json.loads(path.read_text("utf-8"))
+        statuses[str(data.get("platform", "unknown"))] = data
+    return statuses
+
+
+def platform_line(status: dict | None, platform: str, fallback: str) -> str:
+    if not status:
+        return fallback
+    label = status.get("display_label", "Community Build")
+    warning = status.get("warning", "")
+    if warning:
+        return f"{label} - {warning}"
+    return label
+
+
+def render(tag: str, statuses: dict[str, dict]) -> str:
+    windows = statuses.get("Windows")
+    macos = statuses.get("macOS")
+    linux = statuses.get("Linux")
+    return f"""## Basilisk {tag}
+
+AI Red Teaming Framework - Smart Prompt Evolution for LLM Security Testing.
+
+### Downloads
+
+| Platform | File | Trust |
+|---|---|---|
+| **Windows** | `.exe` (NSIS installer) | {platform_line(windows, "Windows", "Community Build - Windows artifact signing metadata unavailable")} |
+| **macOS** | `.dmg` (Apple Disk Image) | {platform_line(macos, "macOS", "Community Build - macOS signing/notarization metadata unavailable")} |
+| **Linux (Universal)** | `.AppImage` | {platform_line(linux, "Linux", "Community Build - Linux release metadata signed in CI")} |
+| **Arch Linux** | `.pacman` | {platform_line(linux, "Linux", "Community Build - Linux release metadata signed in CI")} |
+| **Ubuntu/Debian** | `.deb` | {platform_line(linux, "Linux", "Community Build - Linux release metadata signed in CI")} |
+| **Fedora/RHEL** | `.rpm` | {platform_line(linux, "Linux", "Community Build - Linux release metadata signed in CI")} |
+
+### Supply-Chain Security
+- Release metadata includes `release-manifest.json`, `sbom.json`, and `provenance.json`
+- Release assets are signed in CI using Sigstore keyless signing or an external KMS/HSM key via `COSIGN_KEY_REF`
+- Desktop artifacts are explicitly labeled as `Vendor-Signed Build` or `Community Build`
+- Community builds are safe to verify, but they do not claim Apple Developer or Windows Authenticode trust unless stated above
+
+### Install via pip
+```bash
+pip install basilisk-ai
+```
+
+### Install via Docker
+```bash
+docker pull rothackers/basilisk
+docker run --rm rothackers/basilisk scan --help
+```
+"""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Render Basilisk GitHub release notes")
+    parser.add_argument("--tag", required=True)
+    parser.add_argument("--artifacts-root", default="artifacts")
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+
+    artifacts_root = Path(args.artifacts_root)
+    statuses = load_statuses(artifacts_root)
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(render(args.tag, statuses), "utf-8")
+    print(f"Wrote {output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

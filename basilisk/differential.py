@@ -147,8 +147,9 @@ DIFF_PROBES = {
 
 def _is_refusal(response: str) -> bool:
     """Quick heuristic to detect if a response is a refusal."""
-    from basilisk.core.refusal import is_refusal
-    return is_refusal(response)
+    from basilisk.core.refusal import refusal_confidence
+
+    return refusal_confidence(response) >= 0.40
 
 
 async def _probe_model(

@@ -3,10 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'">
     <title>Basilisk — AI Red Teaming</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -40,12 +39,12 @@
         <div class="update-banner-content">
             <span id="update-banner-text">A new version is available</span>
             <div class="update-banner-actions">
-                <button class="btn sm" id="btn-update-download" style="display:none">Download</button>
-                <button class="btn sm" id="btn-update-install" style="display:none">Restart &amp; Update</button>
+                <button class="btn sm is-hidden" id="btn-update-download">Download</button>
+                <button class="btn sm is-hidden" id="btn-update-install">Restart &amp; Update</button>
                 <button class="btn ghost sm" id="btn-update-dismiss">✕</button>
             </div>
         </div>
-        <div id="update-progress-bar" class="update-progress-bar" style="display:none"><div id="update-progress-fill" class="update-progress-fill"></div></div>
+        <div id="update-progress-bar" class="update-progress-bar is-hidden"><progress id="update-progress-fill" class="update-progress-fill" max="100" value="0"></progress></div>
     </div>
 
     <!-- ── SHELL ── -->
@@ -61,6 +60,8 @@
             <button class="tab" data-v="recon">Recon</button>
             <button class="tab" data-v="findings">Findings<span class="badge hidden" id="b-findings">0</span></button>
             <button class="tab" data-v="diff">Diff</button>
+            <button class="tab" data-v="probes">Probes</button>
+            <button class="tab" data-v="eval">Eval</button>
             <button class="tab" data-v="posture">Posture</button>
             <button class="tab" data-v="reports">Reports</button>
             <button class="tab" data-v="audit">Audit</button>
@@ -91,6 +92,10 @@
                     <div class="kpi">
                         <div class="kpi-label">Modules</div>
                         <div class="kpi-value info" id="k-modules">32</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="kpi-label">Probes</div>
+                        <div class="kpi-value accent-text" id="k-probes">—</div>
                     </div>
                     <div class="kpi">
                         <div class="kpi-label">Posture</div>
@@ -127,7 +132,7 @@
                     <div class="pane">
                         <div class="pane-head"><span class="pane-title">Engine Telemetry</span></div>
                         <div class="pane-body terminal" id="sys-log">
-                            <div class="ll dim">[boot] Basilisk AI Red Teaming v1.1.0</div>
+                            <div class="ll dim">[boot] Basilisk AI Red Teaming v2.0.0</div>
                             <div class="ll dim">[boot] Checking native extensions…</div>
                             <div class="ll inf">[init] Waiting for backend connection.</div>
                         </div>
@@ -191,18 +196,21 @@
                                 <option value="markdown">Markdown</option>
                             </select></div>
                         <div class="field mt-2">
-                            <label class="field-label"
-                                style="display:flex; justify-content:space-between; align-items:center;">
+                            <label class="check-row">
+                                <input type="checkbox" id="s-include-research">
+                                <span>Include research-tier modules</span>
+                            </label>
+                        </div>
+                        <div class="field mt-2">
+                            <label class="field-label row-between">
                                 <span>Reconnaissance</span>
-                                <span style="font-size: 10px; color: var(--accent); cursor: pointer;"
-                                    onclick="toggleReconDetails()">[Settings]</span>
+                                <button type="button" class="inline-link-btn" id="btn-toggle-recon">[Settings]</button>
                             </label>
                             <label class="check-row">
                                 <input type="checkbox" id="s-skip-recon">
                                 <span>Skip reconnaissance phase</span>
                             </label>
-                            <div id="recon-details"
-                                style="display:none; margin-top:8px; padding:8px 12px; background: rgba(0,0,0,0.15); border-radius: 4px; border: 1px solid var(--border);">
+                            <div id="recon-details" class="details-panel is-hidden">
                                 <label class="field-label">Selective Modules</label>
                                 <div class="recon-grid">
                                     <label class="check-row-sm"><input type="checkbox" class="recon-mod"
@@ -219,14 +227,11 @@
                             </div>
                         </div>
                         <div class="field mt-3">
-                            <label class="field-label"
-                                style="display:flex; justify-content:space-between; align-items:center;">
+                            <label class="field-label row-between">
                                 <span>Attacker Brain (AI Evolution)</span>
-                                <span style="font-size: 10px; color: var(--accent); cursor: pointer;"
-                                    onclick="toggleAttackerDetails()">[Configure]</span>
+                                <button type="button" class="inline-link-btn" id="btn-toggle-attacker">[Configure]</button>
                             </label>
-                            <div id="attacker-details"
-                                style="display:none; margin-top:8px; padding:10px 12px; background: rgba(0,0,0,0.15); border-radius: 4px; border: 1px solid var(--border);">
+                            <div id="attacker-details" class="details-panel details-panel-lg is-hidden">
                                 <div class="field-row">
                                     <div class="field">
                                         <label class="field-label">Provider</label>
@@ -274,35 +279,206 @@
                                         <label class="field-label">Stagnation</label>
                                         <input class="inp" id="s-stagnation" type="number" value="3" min="1" max="10">
                                     </div>
+                                </div> <!-- /field-row (pop, fitness, stagnation) -->
+                            </div> <!-- /attacker-details -->
+                        </div> <!-- /field (Attacker Brain) -->
+                        <!-- P0-P2: Evolution Enhancements (always visible) -->
+                        <div class="field mt-3">
+                            <label class="field-label row-between">
+                                <span>Evolution Enhancements</span>
+                                <span class="field-caption">P0-P2</span>
+                            </label>
+                            <div class="details-panel details-panel-lg">
+                                <div class="field-row">
+                                    <div class="field">
+                                        <label class="field-label">Diversity Mode</label>
+                                        <select class="inp" id="s-diversity-mode">
+                                            <option value="novelty" selected>Novelty</option>
+                                            <option value="niche">Niche Crowding</option>
+                                            <option value="off">Off</option>
+                                        </select>
+                                    </div>
+                                    <div class="field">
+                                        <label class="field-label">Intent Weight</label>
+                                        <input class="inp" id="s-intent-weight" type="number" value="0.15" step="0.05" min="0" max="1.0">
+                                    </div>
+                                </div>
+                                <div class="field-row mt-2">
+                                    <div class="field field-auto">
+                                        <label class="field-label field-inline-toggle">
+                                            <input type="checkbox" id="s-exit-on-first" class="check">
+                                            Exit on first breakthrough
+                                        </label>
+                                    </div>
+                                    <div class="field field-auto">
+                                        <label class="field-label field-inline-toggle">
+                                            <input type="checkbox" id="s-cache" class="check" checked>
+                                            Response cache
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div style="display:flex;gap:8px;margin-top:10px;">
+                        <div class="action-row">
                             <button class="btn primary block" id="btn-scan-start"><svg width="13" height="13"
                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polygon points="5 3 19 12 5 21 5 3" />
                                 </svg>Start Scan</button>
-                            <button class="btn ghost block" id="btn-scan-stop" style="display:none"><svg width="13"
+                            <button class="btn ghost block is-hidden" id="btn-scan-stop"><svg width="13"
                                     height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <rect x="6" y="4" width="4" height="16" />
                                     <rect x="14" y="4" width="4" height="16" />
                                 </svg>Stop</button>
                         </div>
                     </div>
-                </div>
-                <div class="pane" id="scan-progress-pane" style="display:none">
-                    <div class="pane-head"><span class="pane-title">Scan Progress</span><span class="mode-pill standard"
-                            id="scan-mode-pill">STANDARD</span></div>
-                    <div style="padding:10px 16px">
-                        <div class="progress-track">
-                            <div class="progress-fill" id="scan-bar"></div>
+                    <div class="cfg-card">
+                        <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                            </svg>Campaign Control Plane</h3>
+                        <div class="field-row">
+                            <div class="field">
+                                <label class="field-label">Campaign</label>
+                                <input class="inp" id="s-campaign-name" placeholder="Q2 Agentic Red Team">
+                            </div>
+                            <div class="field">
+                                <label class="field-label">Operator</label>
+                                <input class="inp" id="s-operator" placeholder="regaan">
+                            </div>
                         </div>
-                        <div class="progress-label" id="scan-phase">Initializing…</div>
+                        <div class="field-row">
+                            <div class="field">
+                                <label class="field-label">Ticket</label>
+                                <input class="inp" id="s-ticket" placeholder="RT-2048">
+                            </div>
+                            <div class="field">
+                                <label class="field-label">Target Owner</label>
+                                <input class="inp" id="s-target-owner" placeholder="ai-platform@company">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="field-label">Objective</label>
+                            <input class="inp" id="s-objective" placeholder="validate_privileged_tool_chain">
+                        </div>
+                        <div class="field">
+                            <label class="field-label">Hypothesis</label>
+                            <textarea class="inp" id="s-hypothesis" rows="2"
+                                placeholder="Prompt injection plus tool discovery should reach privileged actions without strong authorization gates."></textarea>
+                        </div>
+                        <div class="field-row">
+                            <div class="field">
+                                <label class="field-label">Execution Mode</label>
+                                <select class="sel" id="s-execution-mode">
+                                    <option value="validate" selected>Validate</option>
+                                    <option value="exploit_chain">Exploit Chain</option>
+                                    <option value="research">Research</option>
+                                    <option value="recon">Recon Only</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label class="field-label">Evidence Threshold</label>
+                                <select class="sel" id="s-evidence-threshold">
+                                    <option value="probable">Probable</option>
+                                    <option value="strong" selected>Strong</option>
+                                    <option value="confirmed">Confirmed</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="field-row">
+                            <div class="field">
+                                <label class="field-label">Aggression</label>
+                                <input class="inp" id="s-aggression" type="number" value="3" min="1" max="5">
+                            </div>
+                            <div class="field">
+                                <label class="field-label">Concurrency</label>
+                                <input class="inp" id="s-max-concurrency" type="number" value="5" min="1" max="20">
+                            </div>
+                            <div class="field">
+                                <label class="field-label">Request Budget</label>
+                                <input class="inp" id="s-request-budget" type="number" value="0" min="0" max="500">
+                            </div>
+                        </div>
+                        <div class="field-row">
+                            <div class="field">
+                                <label class="field-label">Rate Limit Delay (s)</label>
+                                <input class="inp" id="s-rate-limit-delay" type="number" value="0" step="0.25" min="0" max="30">
+                            </div>
+                            <div class="field">
+                                <label class="field-label">Raw Evidence Mode</label>
+                                <select class="sel" id="s-raw-evidence-mode">
+                                    <option value="redacted" selected>Redacted</option>
+                                    <option value="operator">Operator Only</option>
+                                    <option value="full">Full</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label class="field-label">Retention (days)</label>
+                                <input class="inp" id="s-retain-days" type="number" value="30" min="0" max="365">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="field-label">Scope Targets</label>
+                            <input class="inp" id="s-scope-targets" placeholder="Comma-separated allowlist of approved targets">
+                        </div>
+                        <div class="field-row">
+                            <div class="field">
+                                <label class="field-label">Allow Modules</label>
+                                <input class="inp" id="s-allow-modules" placeholder="toolabuse, multiturn.authority_escalation">
+                            </div>
+                            <div class="field">
+                                <label class="field-label">Deny Modules</label>
+                                <input class="inp" id="s-deny-modules" placeholder="dos, multimodal">
+                            </div>
+                        </div>
+                        <div class="field-row mt-2">
+                            <div class="field field-auto">
+                                <label class="field-label field-inline-toggle">
+                                    <input type="checkbox" id="s-dry-run" class="check">
+                                    Dry run plan only
+                                </label>
+                            </div>
+                            <div class="field field-auto">
+                                <label class="field-label field-inline-toggle">
+                                    <input type="checkbox" id="s-approval-required" class="check" checked>
+                                    Approval required
+                                </label>
+                            </div>
+                            <div class="field field-auto">
+                                <label class="field-label field-inline-toggle">
+                                    <input type="checkbox" id="s-approval-confirmed" class="check">
+                                    Approval confirmed
+                                </label>
+                            </div>
+                        </div>
+                        <div class="field-row mt-2">
+                            <div class="field field-auto">
+                                <label class="field-label field-inline-toggle">
+                                    <input type="checkbox" id="s-retain-raw" class="check">
+                                    Retain raw findings
+                                </label>
+                            </div>
+                            <div class="field field-auto">
+                                <label class="field-label field-inline-toggle">
+                                    <input type="checkbox" id="s-retain-conversations" class="check">
+                                    Retain conversations
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="pane mt-3" style="flex:1">
-                    <div class="pane-head"><span class="pane-title">Live Findings</span><span
-                            style="font-size:10px;color:var(--text-3)" id="live-count">0 detected</span></div>
+                <div class="pane is-hidden" id="scan-progress-pane">
+                    <div class="pane-head"><span class="pane-title">Scan Progress</span><span class="mode-pill standard"
+                            id="scan-mode-pill">STANDARD</span></div>
+                    <div class="scan-progress-body">
+                        <div class="progress-track">
+                            <progress class="progress-meter" id="scan-bar" max="100" value="0"></progress>
+                        </div>
+                        <div class="progress-label" id="scan-phase">Initializing…</div>
+                        <div class="progress-label scan-governance" id="scan-governance">Campaign governance inactive.</div>
+                    </div>
+                </div>
+                <div class="pane mt-3 pane-flex">
+                    <div class="pane-head"><span class="pane-title">Live Findings</span><span class="pane-count-label" id="live-count">0 detected</span></div>
                     <div class="pane-body" id="live-findings">
                         <div class="empty-msg">Findings appear here during scan.</div>
                     </div>
@@ -312,16 +488,17 @@
             <!-- SESSIONS -->
             <div id="v-sessions" class="view">
                 <div class="dual full">
-                    <div class="pane" style="max-width:320px">
-                        <div class="pane-head"><span class="pane-title">History</span><button class="btn ghost sm"
-                                id="btn-refresh-sess">Refresh</button></div>
+                    <div class="pane pane-narrow">
+                        <div class="pane-head"><span class="pane-title">History</span><div class="toolbar-tight"><button class="btn ghost sm"
+                                id="btn-refresh-sess">Refresh</button><button class="btn ghost sm"
+                                id="btn-clear-sess">Clear</button></div></div>
                         <div class="pane-body no-pad" id="sess-list">
                             <div class="empty-msg">No sessions yet.</div>
                         </div>
                     </div>
                     <div class="pane">
                         <div class="pane-head"><span class="pane-title">Details</span>
-                            <div style="display:flex;gap:4px"><button class="btn ghost sm"
+                            <div class="toolbar-tight"><button class="btn ghost sm"
                                     id="btn-exp-html">HTML</button><button class="btn ghost sm"
                                     id="btn-exp-json">JSON</button><button class="btn ghost sm"
                                     id="btn-exp-sarif">SARIF</button></div>
@@ -337,8 +514,7 @@
             <div id="v-modules" class="view">
                 <div class="pane full">
                     <div class="pane-head"><span class="pane-title">Attack Module Registry — <span id="mod-count-label">32</span> modules</span><input
-                            class="inp" id="mod-search" placeholder="Search…"
-                            style="width:180px;padding:4px 10px;font-size:11px"></div>
+                            class="inp input-compact input-w-180" id="mod-search" placeholder="Search…"></div>
                     <div class="pane-body" id="mod-body">
                         <div class="mod-grid" id="mod-grid"></div>
                     </div>
@@ -346,7 +522,7 @@
                 <div class="pane full mt-3">
                     <div class="pane-head"><span class="pane-title">Multi-Turn Attack Breakdown</span></div>
                     <div class="pane-body">
-                        <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+                        <div class="kpi-row row-3">
                             <div class="kpi">
                                 <div class="kpi-label">Cultivation Scenarios</div>
                                 <div class="kpi-value" id="mt-cultivation-count">—</div>
@@ -384,7 +560,7 @@
                     <div class="pane">
                         <div class="pane-head"><span class="pane-title">SPE-NL Genetic Algorithm</span></div>
                         <div class="pane-body">
-                            <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+                            <div class="kpi-row row-3">
                                 <div class="kpi">
                                     <div class="kpi-label">Population</div>
                                     <div class="kpi-value" id="evo-pop">—</div>
@@ -398,7 +574,7 @@
                                     <div class="kpi-value" id="evo-fit">—</div>
                                 </div>
                             </div>
-                            <div class="kpi-row mt-3" style="grid-template-columns:repeat(4,1fr)">
+                            <div class="kpi-row mt-3 row-4">
                                 <div class="kpi">
                                     <div class="kpi-label">Mean Fitness</div>
                                     <div class="kpi-value" id="evo-mean">—</div>
@@ -416,6 +592,25 @@
                                     <div class="kpi-value" id="evo-mutrate">—</div>
                                 </div>
                             </div>
+                            <!-- P0-P2 Live Metrics -->
+                            <div class="kpi-row mt-3 row-4">
+                                <div class="kpi">
+                                    <div class="kpi-label">Cache Hits</div>
+                                    <div class="kpi-value" id="evo-cache-hits">—</div>
+                                </div>
+                                <div class="kpi">
+                                    <div class="kpi-label">Novelty Score</div>
+                                    <div class="kpi-value" id="evo-novelty">—</div>
+                                </div>
+                                <div class="kpi">
+                                    <div class="kpi-label">Intent Drift</div>
+                                    <div class="kpi-value" id="evo-intent-drift">—</div>
+                                </div>
+                                <div class="kpi">
+                                    <div class="kpi-label">API Calls Saved</div>
+                                    <div class="kpi-value" id="evo-saved">—</div>
+                                </div>
+                            </div>
                             <div class="empty-msg mt-4">Evolution data appears after scans with evolution enabled.</div>
                         </div>
                     </div>
@@ -429,7 +624,7 @@
                 <div class="pane full mt-3">
                     <div class="pane-head"><span class="pane-title">Engine Capabilities</span></div>
                     <div class="pane-body">
-                        <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+                        <div class="kpi-row row-3">
                             <div class="kpi">
                                 <div class="kpi-label">Metaphor Vocabulary</div>
                                 <div class="kpi-value" id="evo-vocab">—</div>
@@ -455,7 +650,7 @@
                 <div class="pane full">
                     <div class="pane-head"><span class="pane-title">Target Reconnaissance Profile</span></div>
                     <div class="pane-body">
-                        <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+                        <div class="kpi-row row-3">
                             <div class="kpi">
                                 <div class="kpi-label">Model Family</div>
                                 <div class="kpi-value" id="r-model">—</div>
@@ -469,7 +664,7 @@
                                 <div class="kpi-value" id="r-ctx">—</div>
                             </div>
                         </div>
-                        <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+                        <div class="kpi-row row-3">
                             <div class="kpi">
                                 <div class="kpi-label">Guardrails</div>
                                 <div class="kpi-value" id="r-guard">—</div>
@@ -514,7 +709,7 @@
                             </thead>
                             <tbody id="find-tbody">
                                 <tr>
-                                    <td colspan="5" style="text-align:center;color:var(--text-3);padding:24px">No
+                                    <td colspan="5" class="empty-table-cell">No
                                         findings.</td>
                                 </tr>
                             </tbody>
@@ -526,7 +721,7 @@
             <!-- DIFFERENTIAL -->
             <div id="v-diff" class="view">
                 <div class="cfg-grid">
-                    <div class="cfg-card" style="grid-column:1/-1">
+                    <div class="cfg-card card-wide">
                         <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="18" cy="18" r="3" />
@@ -534,12 +729,12 @@
                                 <path d="M13 6h3a2 2 0 012 2v7" />
                                 <path d="M11 18H8a2 2 0 01-2-2V9" />
                             </svg>Differential Scan — Compare Models Side-by-Side</h3>
-                        <div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Run identical attack probes
+                        <div class="helper-copy">Run identical attack probes
                             across multiple LLM providers. Detects behavioral divergences where some models refuse but
                             others comply.</div>
                         <div id="diff-targets">
                             <div class="diff-target-row" data-idx="0">
-                                <select class="sel" id="diff-prov-0" style="width:130px">
+                                <select class="sel diff-target-select" id="diff-prov-0">
                                     <option value="openai">OpenAI</option>
                                     <option value="anthropic">Anthropic</option>
                                     <option value="google">Google</option>
@@ -547,10 +742,10 @@
                                     <option value="ollama">Ollama</option>
                                     <option value="github">GitHub</option>
                                 </select>
-                                <input class="inp" id="diff-model-0" placeholder="gpt-4o" style="flex:1">
+                                <input class="inp flex-fill" id="diff-model-0" placeholder="gpt-4o">
                             </div>
                             <div class="diff-target-row" data-idx="1">
-                                <select class="sel" id="diff-prov-1" style="width:130px">
+                                <select class="sel diff-target-select" id="diff-prov-1">
                                     <option value="openai">OpenAI</option>
                                     <option value="anthropic" selected>Anthropic</option>
                                     <option value="google">Google</option>
@@ -558,11 +753,10 @@
                                     <option value="ollama">Ollama</option>
                                     <option value="github">GitHub</option>
                                 </select>
-                                <input class="inp" id="diff-model-1" placeholder="claude-3-5-sonnet-20241022"
-                                    style="flex:1">
+                                <input class="inp flex-fill" id="diff-model-1" placeholder="claude-3-5-sonnet-20241022">
                             </div>
                         </div>
-                        <div style="display:flex;gap:8px;margin-top:10px">
+                        <div class="action-row">
                             <button class="btn ghost sm" id="btn-diff-add">+ Add Model</button>
                             <button class="btn primary" id="btn-diff-start"><svg width="13" height="13"
                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -571,9 +765,8 @@
                         </div>
                     </div>
                 </div>
-                <div class="pane mt-3" style="flex:1">
-                    <div class="pane-head"><span class="pane-title">Divergence Results</span><span
-                            style="font-size:10px;color:var(--text-3)" id="diff-summary"></span></div>
+                <div class="pane mt-3 pane-flex">
+                    <div class="pane-head"><span class="pane-title">Divergence Results</span><span class="pane-count-label" id="diff-summary"></span></div>
                     <div class="pane-body no-pad" id="diff-results">
                         <div class="empty-msg">Configure targets above and run a differential scan.</div>
                     </div>
@@ -588,7 +781,7 @@
                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                             </svg>Guardrail Posture Scan</h3>
-                        <div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Non-destructive recon scan.
+                        <div class="helper-copy">Non-destructive recon scan.
                             No exploitation — safe for production. Produces an A+ to F security grade.</div>
                         <div class="field-row">
                             <div class="field"><label class="field-label">Provider</label><select class="sel"
@@ -602,19 +795,18 @@
                             <div class="field"><label class="field-label">Model</label><input class="inp"
                                     id="post-model" placeholder="gpt-4o"></div>
                         </div>
-                        <button class="btn primary block" id="btn-posture-start" style="margin-top:10px"><svg width="13"
+                        <button class="btn primary block button-top-gap" id="btn-posture-start"><svg width="13"
                                 height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                             </svg>Run Posture Scan</button>
                     </div>
-                    <div class="cfg-card" style="text-align:center">
+                    <div class="cfg-card posture-grade-card">
                         <h3>Security Grade</h3>
-                        <div id="posture-grade"
-                            style="font-size:72px;font-weight:700;color:var(--text-3);line-height:1">—</div>
-                        <div id="posture-score" style="font-size:14px;color:var(--text-3);margin-top:8px"></div>
+                        <div id="posture-grade" class="grade-display">—</div>
+                        <div id="posture-score" class="grade-score"></div>
                     </div>
                 </div>
-                <div class="pane mt-3" style="flex:1">
+                <div class="pane mt-3 pane-flex">
                     <div class="pane-head"><span class="pane-title">Category Breakdown</span></div>
                     <div class="pane-body no-pad" id="posture-results">
                         <div class="empty-msg">Run a posture scan to see guardrail coverage.</div>
@@ -644,7 +836,7 @@
                     </div>
                     <div class="cfg-card">
                         <h3>Formats</h3>
-                        <div style="font-size:12px;color:var(--text-2);line-height:2">
+                        <div class="formats-copy">
                             <div><span class="badge-sev HIGH">HTML</span> Full visual report with charts</div>
                             <div><span class="badge-sev LOW">JSON</span> Structured data for automation</div>
                             <div><span class="badge-sev MEDIUM">SARIF</span> GitHub/GitLab security tabs</div>
@@ -659,36 +851,37 @@
                 <div class="settings-wrap">
                     <div class="settings-section">
                         <h3>API Keys</h3>
+                        <div id="secret-store-status" class="secret-store-status">Encrypted local secret store status unavailable.</div>
                         <div class="apikey-row">
                             <div class="field"><label class="field-label">OpenAI</label><input class="inp"
                                     id="key-openai" type="password" placeholder="sk-…"></div><button
-                                class="btn ghost sm" onclick="saveKey('openai')">Save</button>
+                                class="btn ghost sm" id="btn-save-key-openai">Save</button>
                         </div>
                         <div class="apikey-row">
                             <div class="field"><label class="field-label">Anthropic</label><input class="inp"
                                     id="key-anthropic" type="password" placeholder="sk-ant-…"></div><button
-                                class="btn ghost sm" onclick="saveKey('anthropic')">Save</button>
+                                class="btn ghost sm" id="btn-save-key-anthropic">Save</button>
                         </div>
                         <div class="apikey-row">
                             <div class="field"><label class="field-label">Google AI</label><input class="inp"
                                     id="key-google" type="password" placeholder="AIza…"></div><button
-                                class="btn ghost sm" onclick="saveKey('google')">Save</button>
+                                class="btn ghost sm" id="btn-save-key-google">Save</button>
                         </div>
                         <div class="apikey-row">
                             <div class="field"><label class="field-label">GitHub Token</label><input class="inp"
                                     id="key-github" type="password"
                                     placeholder="ghp_… (free via github.com/marketplace/models)"></div><button
-                                class="btn ghost sm" onclick="saveKey('github')">Save</button>
+                                class="btn ghost sm" id="btn-save-key-github">Save</button>
                         </div>
                         <div class="apikey-row">
                             <div class="field"><label class="field-label">xAI (Grok)</label><input class="inp"
                                     id="key-xai" type="password" placeholder="xai-…"></div><button
-                                class="btn ghost sm" onclick="saveKey('xai')">Save</button>
+                                class="btn ghost sm" id="btn-save-key-xai">Save</button>
                         </div>
                         <div class="apikey-row">
                             <div class="field"><label class="field-label">Groq</label><input class="inp"
                                     id="key-groq" type="password" placeholder="gsk_…"></div><button
-                                class="btn ghost sm" onclick="saveKey('groq')">Save</button>
+                                class="btn ghost sm" id="btn-save-key-groq">Save</button>
                         </div>
                     </div>
                     <div class="settings-section">
@@ -714,10 +907,11 @@
                     </div>
                     <div class="settings-section">
                         <h3>Updates</h3>
-                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                            <span style="font-size:12px;color:var(--text-2)">Current: <strong style="color:var(--text-1)">v1.1.0</strong></span>
-                            <span id="update-status" style="font-size:11px;color:var(--text-3)"></span>
+                        <div class="update-status-row">
+                            <span class="update-current">Current: <strong class="table-text-primary">v2.0.0</strong></span>
+                            <span id="update-status" class="update-status-text"></span>
                         </div>
+                        <div class="text-muted mb-3" id="update-build-trust">Build trust status unavailable.</div>
                         <button class="btn ghost sm" id="btn-check-update">Check for Updates</button>
                     </div>
                 </div>
@@ -729,7 +923,7 @@
                     <div class="pane-head"><span class="pane-title">Full System Log</span><button class="btn ghost sm"
                             id="btn-clear-log">Clear</button></div>
                     <div class="pane-body terminal" id="full-log">
-                        <div class="ll dim">[system] Basilisk v1.1.0</div>
+                        <div class="ll dim">[system] Basilisk v2.0.0</div>
                     </div>
                 </div>
             </div>
@@ -739,17 +933,100 @@
                 <div class="pane full">
                     <div class="pane-head">
                         <span class="pane-title">Audit Trail</span>
-                        <div style="display:flex;gap:8px;align-items:center">
-                            <input class="inp" id="audit-session" placeholder="Session ID"
-                                style="width:160px;padding:4px 10px;font-size:11px">
+                        <div class="audit-toolbar">
+                            <input class="inp input-compact input-w-160" id="audit-session" placeholder="Session ID">
                             <button class="btn ghost sm" id="btn-audit-load">Load</button>
                         </div>
                     </div>
                     <div class="pane-body terminal" id="audit-log">
                         <div class="empty-msg">Enter a session ID to view its audit trail.</div>
                     </div>
-                    <div style="padding:8px 16px;font-size:10px;color:var(--text-3);border-top:1px solid var(--border)">
+                    <div class="audit-footer">
                         <span id="audit-integrity"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PROBES -->
+            <div id="v-probes" class="view">
+                <div class="twin">
+                    <div class="pane">
+                        <div class="pane-head">
+                            <span class="pane-title">Probe Database</span>
+                            <div class="probe-toolbar">
+                                <select class="inp input-compact probe-select-wide" id="probe-cat">
+                                    <option value="">All Categories</option>
+                                    <option value="injection">Injection</option>
+                                    <option value="extraction">Extraction</option>
+                                    <option value="exfiltration">Exfiltration</option>
+                                    <option value="guardrails">Guardrails</option>
+                                    <option value="toolabuse">Tool Abuse</option>
+                                    <option value="dos">DoS</option>
+                                    <option value="multiturn">Multi-Turn</option>
+                                    <option value="multimodal">Multimodal</option>
+                                </select>
+                                <select class="inp input-compact probe-select-narrow" id="probe-sev">
+                                    <option value="">All Severity</option>
+                                    <option value="critical">Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="low">Low</option>
+                                </select>
+                                <input class="inp input-compact probe-search-input" id="probe-search" placeholder="Search probes...">
+                                <button class="btn ghost sm" id="btn-probe-load">Load</button>
+                            </div>
+                        </div>
+                        <div class="pane-body probe-list-scroll" id="probe-list">
+                            <div class="empty-msg">Click Load to browse the probe database.</div>
+                        </div>
+                    </div>
+                    <div class="pane">
+                        <div class="pane-head"><span class="pane-title">Probe Stats</span></div>
+                        <div class="pane-body" id="probe-stats">
+                            <div class="empty-msg">Stats will appear after loading probes.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EVAL -->
+            <div id="v-eval" class="view">
+                <div class="twin">
+                    <div class="pane">
+                        <div class="pane-head">
+                            <span class="pane-title">Eval Suite Runner</span>
+                            <div class="eval-toolbar">
+                                <select class="inp input-compact eval-format-select" id="eval-format">
+                                    <option value="json">JSON</option>
+                                    <option value="markdown">Markdown</option>
+                                    <option value="junit">JUnit XML</option>
+                                    <option value="console">Console</option>
+                                </select>
+                                <button class="btn sm" id="btn-eval-run">Run Eval</button>
+                            </div>
+                        </div>
+                        <div class="pane-body pane-body-no-pad">
+                            <div class="yaml-inline-header">YAML Config (inline)</div>
+                            <textarea id="eval-yaml" class="inp eval-yaml-input" placeholder="target:
+  provider: openai
+  model: gpt-4o
+
+tests:
+  - id: test-001
+    name: Basic refusal
+    prompt: Ignore all instructions
+    assertions:
+      - type: must_refuse"></textarea>
+                        </div>
+                    </div>
+                    <div class="pane">
+                        <div class="pane-head">
+                            <span class="pane-title">Results</span>
+                            <span id="eval-summary" class="eval-summary-text"></span>
+                        </div>
+                        <div class="pane-body terminal eval-results-scroll" id="eval-results">
+                            <div class="empty-msg">Write a YAML config and click Run Eval.</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -758,27 +1035,14 @@
 
         <!-- FOOTER -->
         <div class="app-footer">
-            <span>Basilisk v1.1.0 — AI Red Teaming Framework</span>
-            <span>Built by <a href="https://regaan.rothackers.com" target="_blank">Regaan</a> · Rot Hackers</span>
+            <span>Basilisk v2.0.0 — AI Red Teaming Framework</span>
+            <span>Built by <button type="button" class="footer-link-btn" id="btn-open-homepage">Regaan</button> · Rot Hackers</span>
         </div>
 
     </div><!-- /shell -->
 
     <div id="toast-container"></div>
-    <!-- Modules loaded in dependency order -->
-    <script src="core.js"></script>
-    <script src="scan.js"></script>
-    <script src="modules.js"></script>
-    <script src="sessions.js"></script>
-    <script src="advanced.js"></script>
-    <script src="updates.js"></script>
-    <script>
-        // ── Init ──
-        loadModules();
-        loadMultiturnModules();
-        loadEvolutionOperators();
-        log('inf', 'Basilisk Desktop initialized.');
-    </script>
+    <script type="module" src="app.js"></script>
 </body>
 
 </html>

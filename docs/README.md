@@ -1,19 +1,41 @@
 # Basilisk Documentation
 
-Welcome to the Basilisk documentation — the AI Red Teaming Framework by Rot Hackers.
+This directory is split by audience.
 
-## Table of Contents
+## Beginner Guides
 
-1. [Getting Started](getting-started.md) — Installation, first scan, quickstart
-2. [Architecture](architecture.md) — System design, module overview, data flow
-3. [CLI Reference](cli-reference.md) — All commands and options
-4. [Attack Modules](attack-modules.md) — Detailed module documentation
-5. [Evolution Engine](evolution-engine.md) — SPE-NL genetic mutation system
-6. [Reporting](reporting.md) — Report formats and CI/CD integration
-7. [API Reference](api-reference.md) — Desktop backend API endpoints
+- [CLI Beginner Guide](cli-beginner-guide.md)
+- [Desktop Beginner Guide](desktop-beginner-guide.md)
 
-## Quick Links
+These guides are written for first-time operators who want to run Basilisk safely, understand the main screens and commands, and get to a useful first result without reading the whole codebase.
 
-- **Repository:** [github.com/regaan/basilisk](https://github.com/regaan/basilisk)
-- **Website:** [basilisk.rothackers.com](https://basilisk.rothackers.com)
-- **OWASP LLM Top 10:** [owasp.org](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
+## Advanced Guides
+
+- [CLI Advanced Guide](cli-advanced-guide.md)
+- [Desktop Advanced Guide](desktop-advanced-guide.md)
+
+These guides explain campaign controls, execution modes, module trust tiers, evidence thresholds, reporting, and advanced operator workflows.
+
+## Technical References
+
+- [Architecture](architecture.md)
+- [CLI Reference](cli-reference.md)
+- [Attack Modules](attack-modules.md)
+- [Evolution Engine](evolution-engine.md)
+- [Eval, Probes, and Curiosity](eval-probes-curiosity.md)
+- [Reporting](reporting.md)
+- [API Reference](api-reference.md)
+
+## Suggested Reading Order
+
+If you are new to the project:
+
+1. Read the main [README](../README.md).
+2. Read either the [CLI Beginner Guide](cli-beginner-guide.md) or the [Desktop Beginner Guide](desktop-beginner-guide.md).
+3. Read [Eval, Probes, and Curiosity](eval-probes-curiosity.md) when you want to understand the payload corpus and evaluation workflow.
+4. Use the advanced guide for the interface you actually operate.
+
+If you already know the product surface:
+
+1. Read the matching advanced guide.
+2. Use the technical references for implementation detail.

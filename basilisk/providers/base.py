@@ -54,7 +54,10 @@ class ProviderResponse:
 
     @property
     def is_refusal(self) -> bool:
-        """Detect if the response is a safety refusal."""
+        """
+        Detect if the response is a safety refusal.
+        Deprecated: use ProviderAdapter.is_refusal(resp) instead for provider-specific detection.
+        """
         from basilisk.core.refusal import is_refusal
         return is_refusal(self.content or "")
 
@@ -83,6 +86,14 @@ class ProviderResponse:
 
 
 @dataclass
+class ImageContent:
+    """Image content for multimodal messages."""
+    data: str  # base64-encoded or URL
+    media_type: str = "image/png"  # MIME type
+    is_url: bool = False  # True if data is a URL, False if base64
+
+
+@dataclass
 class ProviderMessage:
     """Standard message format for sending to providers."""
     role: str
@@ -90,10 +101,40 @@ class ProviderMessage:
     name: str | None = None
     tool_call_id: str | None = None
     tool_calls: list[dict[str, Any]] | None = None
+    images: list[ImageContent] | None = None  # Multimodal image attachments
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert message to a dictionary for API requests."""
-        data = {"role": self.role, "content": self.content}
+        """Convert message to a dictionary for API requests.
+
+        When images are present, outputs OpenAI-compatible multimodal
+        content array format:
+            {"role": "user", "content": [
+                {"type": "text", "text": "..."},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}},
+            ]}
+        """
+        if self.images:
+            # Build multimodal content array
+            parts: list[dict[str, Any]] = []
+            if self.content:
+                parts.append({"type": "text", "text": self.content})
+            for img in self.images:
+                if img.is_url:
+                    parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": img.data},
+                    })
+                else:
+                    parts.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{img.media_type};base64,{img.data}",
+                        },
+                    })
+            data: dict[str, Any] = {"role": self.role, "content": parts}
+        else:
+            data = {"role": self.role, "content": self.content}
+
         if self.name:
             data["name"] = self.name
         if self.tool_call_id:
@@ -173,6 +214,22 @@ class ProviderAdapter(ABC):
             return True, None
         except Exception as e:
             return False, str(e)
+
+    def is_refusal(self, response: ProviderResponse) -> bool:
+        """
+        Detect if the response is a safety refusal.
+        Default implementation uses keyword/regex matching on content.
+        Subclasses should override to check headers, finish_reason, or specific API flags.
+        """
+        # 1. Check content-based indicators
+        if response.is_refusal:
+            return True
+        
+        # 2. Check standardized refusal indicators
+        if response.finish_reason in ("safety", "filtered", "content_filter"):
+            return True
+            
+        return False
 
     async def close(self) -> None:
         """Release any resources held by the adapter. Override in subclasses."""

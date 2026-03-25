@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "basilisk-ai"
-version = "1.1.0"
+version = "2.0.0"
 description = "LLM/AI Application Red Teaming Framework — Break Every Mind"
 readme = "README.md"
 license = {text = "AGPL-3.0"}
@@ -17,7 +17,7 @@ keywords = [
     "prompt-injection", "offensive-security", "vulnerability-scanner",
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
@@ -35,7 +35,6 @@ dependencies = [
     "httpx>=0.27.0",
     "litellm>=1.40.0",
     "pyyaml>=6.0",
-    "aiosqlite>=0.20.0",
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",
     "websockets>=12.0",
@@ -44,6 +43,7 @@ dependencies = [
     "numpy>=1.26.0",
     "scikit-learn>=1.5.0",
     "tiktoken>=0.7.0",
+    "cryptography>=43.0.0",
 ]
 
 [project.optional-dependencies]
@@ -56,6 +56,15 @@ dev = [
 ]
 pdf = [
     "weasyprint>=62.0",
+]
+multimodal = [
+    "Pillow>=10.0.0",
+]
+secrets = [
+    "keyring>=25.0.0",
+]
+embeddings = [
+    "sentence-transformers>=2.7.0",
 ]
 
 [project.urls]
@@ -71,7 +80,7 @@ basilisk = "basilisk.cli.main:cli"
 packages = ["basilisk"]
 
 [tool.hatch.build.targets.sdist]
-include = ["basilisk/", "README.md", "LICENSE", "pyproject.toml", "requirements.txt"]
+include = ["basilisk/", "README.md", "LICENSE", "pyproject.toml", "requirements.txt", "requirements.lock"]
 
 [tool.ruff]
 target-version = "py311"

@@ -14,6 +14,8 @@ from typing import Any
 
 from basilisk import __version__
 from basilisk.core.config import OutputConfig
+from basilisk.core.retention import prune_artifact_dir
+from basilisk.core.schema import SCHEMA_VERSION_LABEL
 from basilisk.core.session import ScanSession
 
 
@@ -21,58 +23,88 @@ async def generate_report(session: ScanSession, output_config: OutputConfig) -> 
     """Generate a report in the configured format."""
     output_dir = Path(output_config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    prune_artifact_dir(output_dir, retain_days=session.config.policy.retain_days)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     base_name = f"basilisk_{session.id}_{timestamp}"
+    include_raw = output_config.include_raw_content
+    include_conversations = output_config.include_conversations and include_raw
 
     fmt = output_config.format.lower()
     if fmt == "json":
         path = output_dir / f"{base_name}.json"
-        _write_json_report(session, path)
+        _write_json_report(session, path, include_raw=include_raw, include_conversations=include_conversations)
     elif fmt == "sarif":
         path = output_dir / f"{base_name}.sarif"
         from basilisk.report.sarif import generate_sarif
-        generate_sarif(session, path)
+        generate_sarif(session, path, include_raw_content=include_raw, include_conversations=include_conversations)
     elif fmt == "markdown":
         path = output_dir / f"{base_name}.md"
-        _write_markdown_report(session, path)
+        _write_markdown_report(session, path, include_raw=include_raw, include_conversations=include_conversations)
     elif fmt == "pdf":
         path = output_dir / f"{base_name}.pdf"
         from basilisk.report.pdf import generate_pdf
-        generate_pdf(session, path)
+        generate_pdf(session, path, include_raw_content=include_raw, include_conversations=include_conversations)
     elif fmt == "html":
         path = output_dir / f"{base_name}.html"
         from basilisk.report.html import generate_html
-        generate_html(session, path)
+        generate_html(session, path, include_raw_content=include_raw, include_conversations=include_conversations)
     else:
         path = output_dir / f"{base_name}.json"
-        _write_json_report(session, path)
+        _write_json_report(session, path, include_raw=include_raw, include_conversations=include_conversations)
 
     return str(path)
 
 
-def _write_json_report(session: ScanSession, path: Path) -> None:
+def _write_json_report(
+    session: ScanSession,
+    path: Path,
+    *,
+    include_raw: bool = False,
+    include_conversations: bool = False,
+) -> None:
     """Write a JSON report."""
     report = {
+        "schema_version": SCHEMA_VERSION_LABEL,
         "basilisk_version": __version__,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "session": session.summary,
         "profile": session.profile.to_dict(),
-        "findings": [f.to_dict() for f in session.findings],
+        "campaign": session.config.campaign.to_summary(),
+        "retention": {
+            "retain_days": session.config.policy.retain_days,
+            "raw_evidence_mode": session.config.policy.raw_evidence_mode.value,
+        },
+        "findings": [
+            f.sanitized_dict(
+                include_payload=include_raw,
+                include_response=include_raw,
+                include_conversation=include_conversations,
+            )
+            for f in session.findings
+        ],
     }
     with open(path, "w") as f:
         json.dump(report, f, indent=2, default=str)
 
 
-def _write_markdown_report(session: ScanSession, path: Path) -> None:
+def _write_markdown_report(
+    session: ScanSession,
+    path: Path,
+    *,
+    include_raw: bool = False,
+    include_conversations: bool = False,
+) -> None:
     """Write a Markdown report."""
     lines = [
         "# 🐍 Basilisk Scan Report",
         "",
+        f"**Schema Version:** `{SCHEMA_VERSION_LABEL}`",
         f"**Session:** `{session.id}`",
         f"**Target:** `{session.config.target.url}`",
         f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         f"**Mode:** {session.config.mode.value}",
+        f"**Execution Mode:** {session.config.policy.execution_mode.value}",
         f"**Model:** {session.profile.detected_model}",
         f"**Total Findings:** {len(session.findings)}",
         "",
@@ -91,31 +123,62 @@ def _write_markdown_report(session: ScanSession, path: Path) -> None:
     for line in session.profile.summary_lines():
         lines.append(f"- {line}")
 
+    lines.extend(["", "## Campaign", ""])
+    campaign = session.config.campaign.to_summary()
+    lines.append(f"- Name: {campaign.get('name') or '—'}")
+    lines.append(f"- Operator: {campaign.get('authorization', {}).get('operator') or '—'}")
+    lines.append(f"- Ticket: {campaign.get('authorization', {}).get('ticket_id') or '—'}")
+    lines.append(f"- Objective: {campaign.get('objective', {}).get('name') or '—'}")
+    lines.append(f"- Retention: {session.config.policy.retain_days} days")
+    lines.append(f"- Evidence Mode: {session.config.policy.raw_evidence_mode.value}")
+
     lines.extend(["", "## Findings", ""])
 
     for f in sorted(session.findings, key=lambda x: x.severity.numeric, reverse=True):
+        finding_data = f.to_dict()
         lines.extend([
             f"### {f.severity.icon} [{f.severity.value.upper()}] {f.title}",
             "",
             f"**ID:** `{f.id}`",
             f"**Category:** {f.category.value} ({f.category.owasp_id})",
             f"**Module:** `{f.attack_module}`",
+            f"**Module Tier:** {finding_data['module_trust_tier']}",
             f"**Confidence:** {f.confidence:.0%}",
             "",
             f"**Payload:**",
             f"```",
-            f"{f.payload}",
+            f"{f.payload if include_raw else '[redacted in report output]'}",
             f"```",
             "",
             f"**Response:**",
             f"```",
-            f"{f.response[:500]}",
+            f"{f.response[:500] if include_raw else '[redacted in report output]'}",
             f"```",
             "",
+            f"**Evidence Verdict:** {(f.evidence.verdict.value if f.evidence else 'unverified').upper()}",
+            f"**Evidence Basis:** {f.evidence.confidence_basis if f.evidence else 'heuristic'}",
             f"**Remediation:** {f.remediation}",
             "",
         ])
-        if f.conversation:
+        if finding_data["module_success_criteria"]:
+            lines.append("**Success Criteria:**")
+            lines.append("")
+            for criterion in finding_data["module_success_criteria"]:
+                lines.append(f"- {criterion}")
+            lines.append("")
+        if finding_data["module_evidence_requirements"]:
+            lines.append("**Required Proof:**")
+            lines.append("")
+            for requirement in finding_data["module_evidence_requirements"]:
+                lines.append(f"- `{requirement}`")
+            lines.append("")
+        if finding_data["policy_downgraded"]:
+            lines.append(
+                f"**Policy Downgrade:** original={f.metadata.get('original_severity', 'unknown')} "
+                f"missing={', '.join(f.metadata.get('missing_evidence_requirements', [])) or 'n/a'}"
+            )
+            lines.append("")
+        if include_conversations and f.conversation:
             lines.extend(["**Conversation:**", ""])
             for msg in f.conversation:
                 lines.append(f"> **{msg.role}:** {msg.content[:300]}")

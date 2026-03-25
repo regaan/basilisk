@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "libraries": {
+    "libbasilisk_encoder.so": {
+      "sha256": "f12c11cc516bb898ba279c0ffb62ef82b080e8aaee7bf629f2225412b4bcdfc8"
+    },
+    "libbasilisk_fuzzer.so": {
+      "sha256": "914af48a0bca6511e2bcf341fc701d8a96e97aa689c8478346d1b7e66856fc7f"
+    },
+    "libbasilisk_matcher.so": {
+      "sha256": "0ad347d724b959cbe137b776924678d0a2ad5777db3ee4bfef4d358db1763463"
+    },
+    "libbasilisk_tokens.so": {
+      "sha256": "120e4cd22ab15822607588287e1bfa97ba509294e144e20f3d2b1055969d05a4"
+    }
+  }
+}

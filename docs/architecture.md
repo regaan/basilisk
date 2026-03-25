@@ -56,18 +56,26 @@ User (CLI/Desktop/API)
 
 ### Attacks (`basilisk/attacks/`)
 
-8 categories, 29 sub-modules:
+Current catalog shape:
 
-| Category | Modules | OWASP |
-|----------|---------|-------|
-| `injection/` | direct, indirect, multilingual, encoding, split | LLM01 |
-| `extraction/` | role_confusion, translation, simulation, gradient_walk | LLM06 |
-| `exfil/` | training_data, rag_data, tool_schema | LLM06 |
-| `toolabuse/` | ssrf, sqli, command_injection, chained | LLM07/08 |
-| `guardrails/` | roleplay, encoding_bypass, logic_trap, systematic | LLM01/09 |
-| `dos/` | token_exhaustion, context_bomb, loop_trigger | LLM04 |
-| `multiturn/` | escalation, persona_lock, memory_manipulation | LLM01 |
-| `rag/` | poisoning, document_injection, knowledge_enum | LLM03 |
+- 33 attack modules
+- 11 production-tier modules
+- 18 beta-tier modules
+- 4 research-tier modules
+
+Families:
+
+| Family | Current Modules | Notes |
+|--------|-----------------|-------|
+| `injection/` | direct, indirect, multilingual, encoding, split | prompt override and control-path testing |
+| `extraction/` | role_confusion, translation, simulation, gradient_walk | prompt and policy disclosure testing |
+| `exfil/` | training_data, rag_data, tool_schema | sensitive content and schema leakage |
+| `toolabuse/` | ssrf, sqli, command_injection, chained | tool and agent misuse |
+| `guardrails/` | roleplay, encoding_bypass, logic_trap, systematic | guardrail resistance and boundary mapping |
+| `dos/` | token_exhaustion, context_bomb, loop_trigger | pressure and exhaustion behavior |
+| `multiturn/` | cultivation, authority_escalation, escalation, persona_lock, memory_manipulation, sycophancy | long-horizon manipulation and drift |
+| `rag/` | poisoning, document_injection, knowledge_enum | retrieval abuse and poisoning |
+| `multimodal` | injection | image-plus-text testing path |
 
 ### Evolution (`basilisk/evolution/`)
 - **engine.py** — Main SPE-NL genetic algorithm loop

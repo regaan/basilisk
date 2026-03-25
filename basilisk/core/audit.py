@@ -8,17 +8,28 @@ protection and enterprise compliance.
 
 from __future__ import annotations
 
-import hmac
+import base64
 import json
 import hashlib
 import logging
 import os
-import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from basilisk.core.secrets import SecretStore
+from basilisk.core.schema import SCHEMA_VERSION_LABEL
+from basilisk.core.retention import prune_artifact_dir
+
+try:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+except ImportError:  # pragma: no cover - depends on optional runtime state
+    ed25519 = None
+    serialization = None
+
 logger = logging.getLogger("basilisk.audit")
+_AUDIT_KEY_SECRET_NAME = "AUDIT_SIGNING_KEY"
 
 
 class AuditLogger:
@@ -50,15 +61,21 @@ class AuditLogger:
         self.enabled = enabled
         self._session_id = session_id
         
-        # Security: Use a secret for HMAC signatures to prevent tamper-and-recalculate attacks
-        self._audit_secret = os.environ.get("BASILISK_AUDIT_SECRET")
-        if not self._audit_secret and self.enabled:
-            self._audit_secret = secrets.token_hex(32)
-            logger.warning(
-                "No BASILISK_AUDIT_SECRET set — generated a random one for this session. "
-                "Save this to verify audit log integrity later: %s",
-                self._audit_secret,
-            )
+        # Security: Use Ed25519 digital signatures for forensic authenticity
+        self._private_key: Any | None = None
+        self._public_key_hex: str = ""
+        
+        if self.enabled and ed25519 and serialization:
+            self._private_key = self._load_or_create_private_key()
+            
+            # Derive public key for verification
+            public_key = self._private_key.public_key()
+            self._public_key_hex = public_key.public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw
+            ).hex()
+        elif self.enabled:
+            logger.warning("cryptography not available — audit log signatures disabled")
         
         self._last_checksum = "0" * 64
         self._entry_count = 0
@@ -68,15 +85,76 @@ class AuditLogger:
         if self.enabled:
             log_dir = Path(output_dir)
             log_dir.mkdir(parents=True, exist_ok=True)
+            prune_artifact_dir(log_dir, retain_days=30)
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             self._log_path = log_dir / f"audit_{session_id}_{timestamp}.jsonl"
             self._file = open(self._log_path, "a", encoding="utf-8")
             self._write_entry("session_start", {
                 "session_id": session_id,
+                "schema_version": SCHEMA_VERSION_LABEL,
                 "basilisk_version": _get_version(),
                 "pid": os.getpid(),
                 "cwd": os.getcwd(),
+                "public_key": self._public_key_hex,
             })
+
+    def _load_or_create_private_key(self):
+        key_material = ""
+        key_file = os.environ.get("BASILISK_AUDIT_KEY_FILE", "").strip()
+        store: SecretStore | None = None
+
+        if key_file:
+            try:
+                key_material = Path(key_file).expanduser().read_text("utf-8").strip()
+            except Exception as exc:
+                logger.error("Failed to read BASILISK_AUDIT_KEY_FILE: %s", exc)
+
+        if not key_material:
+            try:
+                store = SecretStore()
+                key_material = store.get(_AUDIT_KEY_SECRET_NAME).strip()
+            except Exception as exc:
+                logger.debug("Audit key secret store unavailable: %s", exc)
+
+        legacy_env_key = os.environ.get("BASILISK_AUDIT_KEY", "").strip()
+        if not key_material and legacy_env_key:
+            logger.warning(
+                "BASILISK_AUDIT_KEY is a legacy transport and may leak via process metadata. "
+                "Prefer BASILISK_AUDIT_KEY_FILE or the encrypted Basilisk secret store."
+            )
+            key_material = legacy_env_key
+
+        if key_material:
+            private_key = _load_private_key_material(key_material)
+            if private_key:
+                return private_key
+
+        generated_key = ed25519.Ed25519PrivateKey.generate()
+        generated_raw = generated_key.private_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PrivateFormat.Raw,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).hex()
+
+        if store is None:
+            try:
+                store = SecretStore()
+            except Exception:
+                store = None
+
+        if store is not None:
+            try:
+                store.set(_AUDIT_KEY_SECRET_NAME, generated_raw)
+                logger.info("Generated persistent Ed25519 audit signing key in the encrypted secret store")
+                return generated_key
+            except Exception as exc:
+                logger.warning("Failed to persist audit signing key to secret store: %s", exc)
+
+        logger.warning(
+            "No persistent audit signing key configured — generated an ephemeral Ed25519 key for this session. "
+            "Logs will be signed but cannot be linked to a persistent identity."
+        )
+        return generated_key
 
     def _write_entry(self, event: str, data: dict[str, Any]) -> None:
         """Write a single audit entry to the log file."""
@@ -97,14 +175,10 @@ class AuditLogger:
         self._last_checksum = hashlib.sha256(entry_json.encode()).hexdigest()
         entry["checksum"] = self._last_checksum
         
-        # Calculate HMAC signature for authenticity (tamper-evident)
-        if self._audit_secret:
-            sig = hmac.new(
-                self._audit_secret.encode(),
-                entry_json.encode(),
-                hashlib.sha256
-            ).hexdigest()
-            entry["signature"] = sig
+        # Calculate Ed25519 signature for forensic authenticity
+        if self._private_key:
+            sig = self._private_key.sign(entry_json.encode())
+            entry["signature"] = sig.hex()
 
         self._file.write(json.dumps(entry, default=str) + "\n")
         self._file.flush()
@@ -114,6 +188,20 @@ class AuditLogger:
         """Log the scan configuration (with API keys redacted)."""
         safe_config = _redact_secrets(config)
         self._write_entry("scan_config", safe_config)
+
+    def log_campaign_context(self, campaign: dict[str, Any], policy: dict[str, Any]) -> None:
+        """Log campaign/operator intent and execution policy."""
+        self._write_entry("campaign_context", {
+            "campaign": _redact_secrets(campaign),
+            "policy": _redact_secrets(policy),
+        })
+
+    def log_policy_event(self, event_type: str, details: dict[str, Any]) -> None:
+        """Log a policy enforcement or operator control event."""
+        self._write_entry("policy_event", {
+            "type": event_type,
+            "details": _redact_secrets(details),
+        })
 
     def log_prompt_sent(
         self,
@@ -246,3 +334,25 @@ def _get_version() -> str:
         return __version__
     except ImportError:
         return "unknown"
+
+
+def _load_private_key_material(key_material: str):
+    """Load Ed25519 private key material from hex or base64 text."""
+    if not ed25519:
+        return None
+    candidates: list[bytes] = []
+    try:
+        candidates.append(bytes.fromhex(key_material))
+    except ValueError:
+        pass
+    try:
+        candidates.append(base64.b64decode(key_material, validate=True))
+    except Exception:
+        pass
+    for raw in candidates:
+        try:
+            return ed25519.Ed25519PrivateKey.from_private_bytes(raw)
+        except Exception:
+            continue
+    logger.error("Failed to load audit signing key material from configured source")
+    return None

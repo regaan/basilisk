@@ -9,28 +9,60 @@
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; color: #e5e5e5; }
         .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
         .header { text-align: center; padding: 2.5rem 0; border-bottom: 2px solid #dc2626; margin-bottom: 2rem; }
-        .header h1 { font-size: 2.5rem; color: #dc2626; }
+        .header h1 { font-size: 2.5rem; color: #dc2626; letter-spacing: -0.02em; }
         .header .subtitle { color: #a3a3a3; margin-top: 0.5rem; }
         code { background: #1a1a1a; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
         .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin: 1.5rem 0; }
         .stat { background: #171717; border-radius: 8px; padding: 1.2rem; text-align: center; border: 1px solid #262626; }
         .stat-value { font-size: 2.2rem; font-weight: 700; }
-        .stat-label { color: #a3a3a3; font-size: 0.8rem; text-transform: uppercase; }
+        .stat-label { color: #a3a3a3; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1.5rem 0; }
+        .meta-card { background: #171717; border-radius: 8px; padding: 1rem; border: 1px solid #262626; }
+        .meta-label { font-size: 0.75rem; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.05em; }
+        .meta-value { font-size: 1.1rem; font-weight: 600; margin-top: 0.3rem; }
         h2 { margin: 2rem 0 1rem; font-size: 1.5rem; }
+        h3 { margin: 0.5rem 0; font-size: 1.1rem; }
+        h4 { font-size: 0.9rem; margin-bottom: 0.5rem; color: #d4d4d4; }
+        .section { margin: 2rem 0; }
         .finding { background: #171717; border-radius: 8px; padding: 1.5rem; margin: 1rem 0; border: 1px solid #262626; }
+        .finding-hdr { display:flex; gap:.5rem; align-items:center; margin-bottom:.5rem; flex-wrap: wrap; }
         .sev-badge { color: white; padding: 3px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; }
+        .finding-id { color:#737373; font-size:.8rem; font-family: monospace; }
+        .owasp { color:#22d3ee; font-size:.8rem; font-weight:600; }
+        .evo-badge { color:#a78bfa; font-size:.75rem; background:#1e1b4b; padding:2px 8px; border-radius:3px; }
+        .desc { color:#a3a3a3; font-size:.9rem; margin:0.3rem 0; }
+        .meta-row { display:flex; gap:1.5rem; margin:0.5rem 0; font-size:.85rem; color:#a3a3a3; flex-wrap: wrap; }
+        .signal-list, .tool-list { margin-left: 1.5rem; }
+        .signal-list li, .tool-list li { margin: 0.3rem 0; color: #d4d4d4; }
+        .pill { display:inline-block; background:#1f2937; color:#cbd5e1; padding:3px 8px; border-radius:999px; font-size:.75rem; margin-right:.4rem; margin-top:.4rem; }
+        .tier-pill { display:inline-block; background:#172554; color:#bfdbfe; padding:3px 8px; border-radius:999px; font-size:.75rem; }
+        .downgraded { margin-top: .8rem; background:#311b0f; border:1px solid #7c2d12; color:#fed7aa; padding:.75rem; border-radius:6px; font-size:.82rem; }
         details { margin: 0.5rem 0; }
         summary { cursor: pointer; color: #60a5fa; }
         pre { background: #0a0a0a; padding: 1rem; border-radius: 6px; overflow-x: auto; margin: 0.5rem 0; font-size: 0.82rem; border: 1px solid #262626; }
         .remediation { color: #4ade80; margin-top: 0.8rem; }
+        .conversation { margin-top: 1rem; border-top: 1px solid #262626; padding-top: .8rem; }
+        .conversation h4 { font-size:.85rem; color:#a3a3a3; margin-bottom:.5rem; }
+        .msg { padding:.5rem; margin:.3rem 0; border-radius:4px; font-size:.85rem; }
+        .msg-user { background:#1e293b; }
+        .msg-assistant { background:#1a2e1a; }
+        .role { font-weight:600; margin-right:.5rem; }
+        .msg-user .role { color:#60a5fa; }
+        .msg-assistant .role { color:#4ade80; }
+        .content { color:#d4d4d4; }
+        .empty { color:#737373; text-align:center; padding:3rem 0; }
         footer { text-align: center; margin-top: 3rem; padding: 2rem 0; border-top: 1px solid #262626; color: #737373; }
+        @media (max-width: 768px) {
+            .stats { grid-template-columns: repeat(3, 1fr); }
+            .meta-grid { grid-template-columns: repeat(2, 1fr); }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header class="header">
             <h1>🐍 Basilisk Scan Report</h1>
-            <p class="subtitle">Session: <code>{{ session_id }}</code> | Target: <code>{{ target }}</code> | {{ date }}</p>
+            <p class="subtitle">Session: <code>{{ session_id }}</code> | Target: <code>{{ target }}</code> | {{ generated_at }}</p>
         </header>
 
         <div class="stats">
@@ -42,23 +74,92 @@
             {% endfor %}
         </div>
 
-        <h2>Findings ({{ findings|length }})</h2>
-        {% for f in findings %}
-        <div class="finding" style="border-left: 4px solid {{ f.color }};">
-            <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem;">
-                <span class="sev-badge" style="background:{{ f.color }};">{{ f.severity }}</span>
-                <span style="color:#737373;font-size:.8rem;">{{ f.id }}</span>
-                <span style="color:#22d3ee;font-size:.8rem;">{{ f.owasp }}</span>
+        <section class="meta-grid">
+            <div class="meta-card">
+                <div class="meta-label">Mode</div>
+                <div class="meta-value">{{ profile.mode }}</div>
             </div>
-            <h3>{{ f.title }}</h3>
-            <details><summary>Payload</summary><pre><code>{{ f.payload }}</code></pre></details>
-            <details><summary>Response</summary><pre><code>{{ f.response }}</code></pre></details>
-            <p class="remediation"><strong>Remediation:</strong> {{ f.remediation }}</p>
-        </div>
-        {% endfor %}
+            <div class="meta-card">
+                <div class="meta-label">Model</div>
+                <div class="meta-value">{{ profile.model }}</div>
+            </div>
+            <div class="meta-card">
+                <div class="meta-label">Provider</div>
+                <div class="meta-value">{{ profile.provider }}</div>
+            </div>
+            <div class="meta-card">
+                <div class="meta-label">Attack Surface</div>
+                <div class="meta-value">{{ profile.attack_surface_score }}/10</div>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>Target Profile</h2>
+            <div class="meta-grid">
+                <div class="meta-card">
+                    <div class="meta-label">Context Window</div>
+                    <div class="meta-value">{{ "{:,}".format(profile.context_window) }} tokens</div>
+                </div>
+                <div class="meta-card">
+                    <div class="meta-label">Guardrails</div>
+                    <div class="meta-value">{{ profile.guardrails }}</div>
+                </div>
+                <div class="meta-card">
+                    <div class="meta-label">RAG</div>
+                    <div class="meta-value">{% if profile.rag_detected %}Detected{% else %}No{% endif %}</div>
+                </div>
+                <div class="meta-card">
+                    <div class="meta-label">Code Execution</div>
+                    <div class="meta-value">{% if profile.supports_code_execution %}Supported{% else %}No{% endif %}</div>
+                </div>
+            </div>
+            {% if profile.detected_tools %}
+            <h4>Detected Tools</h4>
+            <ul class="tool-list">
+                {% for tool in profile.detected_tools %}
+                <li><strong>{{ tool.name }}</strong> — {{ tool.description }} (risk: {{ tool.risk_level }})</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </section>
+
+        <section class="section">
+            <h2>Campaign & Policy</h2>
+            <div class="meta-grid">
+                <div class="meta-card">
+                    <div class="meta-label">Campaign</div>
+                    <div class="meta-value">{{ campaign.name or "—" }}</div>
+                </div>
+                <div class="meta-card">
+                    <div class="meta-label">Operator</div>
+                    <div class="meta-value">{{ campaign.authorization.operator or "—" }}</div>
+                </div>
+                <div class="meta-card">
+                    <div class="meta-label">Execution Mode</div>
+                    <div class="meta-value">{{ policy.execution_mode }}</div>
+                </div>
+                <div class="meta-card">
+                    <div class="meta-label">Evidence Threshold</div>
+                    <div class="meta-value">{{ policy.evidence_threshold }}</div>
+                </div>
+            </div>
+            <div>
+                <span class="pill">Raw Evidence: {{ policy.raw_evidence_mode }}</span>
+                <span class="pill">Retention: {{ policy.retain_days }} days</span>
+            </div>
+        </section>
+
+        <h2>Findings ({{ findings|length }})</h2>
+        {% if findings %}
+            {% for finding in findings %}
+                {% include "finding.html.j2" %}
+            {% endfor %}
+        {% else %}
+        <p class="empty">No vulnerabilities detected.</p>
+        {% endif %}
 
         <footer>
-            <p>Generated by <strong>Basilisk</strong> v0.1.0 — AI Red Teaming Framework | <a href="https://rothackers.com" style="color:#dc2626;">Rot Hackers</a></p>
+            <p>Generated by <strong>Basilisk</strong> v{{ basilisk_version }} — AI Red Teaming Framework</p>
         </footer>
     </div>
 </body>

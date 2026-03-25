@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from basilisk.core.config import BasiliskConfig
 from basilisk.core.database import BasiliskDatabase
 from basilisk.core.finding import AttackCategory, Finding, Severity
 from basilisk.core.profile import BasiliskProfile
+from basilisk.core.retention import retention_deadline
+from basilisk.core.schema import SCHEMA_VERSION_LABEL
+
+if TYPE_CHECKING:
+    from basilisk.core.config import BasiliskConfig
 
 
 class ScanSession:
@@ -39,8 +43,25 @@ class ScanSession:
         self.findings: list[Finding] = []
         self.errors: list[dict[str, Any]] = []
         self.status: str = "initialized"
+        self.current_phase: str = "initialized"
         self.started_at: datetime = datetime.now(timezone.utc)
         self.finished_at: datetime | None = None
+        self.phase_history: list[dict[str, Any]] = []
+        self.last_progress: dict[str, Any] = {}
+        self.last_error: str = ""
+        self.attack_memory: dict[str, Any] = {
+            "discovered_tools": [],
+            "guardrail_level": "",
+            "rag_detected": False,
+            "completed_modules": [],
+            "policy_events": [],
+            "behavioral_notes": [],
+            "refusal_patterns": [],
+            "successful_framing_styles": [],
+            "failed_operator_families": [],
+            "best_probe_families": [],
+            "operator_learning": {},
+        }
         self._db: BasiliskDatabase | None = None
         self._event_listeners: list[Callable[..., Any]] = []
 
@@ -48,22 +69,61 @@ class ScanSession:
         """Connect to database and prepare session."""
         self._db = BasiliskDatabase(self.config.session_db)
         await self._db.connect()
+        deadline = retention_deadline(retain_days=self.config.policy.retain_days)
+        if deadline:
+            purged = await self._db.purge_sessions_before(deadline.isoformat())
+            if purged:
+                self.record_phase("retention_prune", purged_sessions=purged, retain_days=self.config.policy.retain_days)
         self.status = "running"
         await self._persist_session()
+        await self.save_runtime_state(status="running", current_phase=self.current_phase)
 
-    async def close(self) -> None:
+    async def close(self, status: str = "completed") -> None:
         """Finalize session and close database."""
-        self.status = "completed"
+        if self._db is None and self.finished_at is not None:
+            self.status = status
+            return
+        self.status = status
         self.finished_at = datetime.now(timezone.utc)
         await self._persist_session()
+        await self.save_runtime_state(
+            status=status,
+            current_phase=self.current_phase or status,
+            resumable=status in {"error", "stopped", "interrupted"},
+            last_error=self.last_error,
+        )
         if self._db:
             await self._db.close()
+            self._db = None
 
     async def add_finding(self, finding: Finding) -> None:
         """Add a finding and persist it."""
+        from basilisk.policy.finding import enforce_finding_policy
+
+        finding = enforce_finding_policy(finding, self.config.policy)
         self.findings.append(finding)
+        if finding.metadata.get("policy_downgraded"):
+            self.remember("policy_events", {
+                "type": "finding_downgraded",
+                "finding_id": finding.id,
+                "module": finding.attack_module,
+                "required": finding.metadata.get("required_evidence_verdict"),
+                "actual": finding.metadata.get("actual_evidence_verdict"),
+            })
         if self._db:
-            await self._db.save_finding(self.id, finding.to_dict())
+            await self._db.save_finding(
+                self.id,
+                finding.sanitized_dict(
+                    include_payload=self.config.persist_payloads,
+                    include_response=self.config.persist_responses,
+                    include_conversation=self.config.persist_conversations,
+                ),
+            )
+        if finding.evidence:
+            verdict = finding.evidence.verdict.value
+            self.attack_memory.setdefault("evidence_verdict_counts", {})
+            counts = self.attack_memory["evidence_verdict_counts"]
+            counts[verdict] = counts.get(verdict, 0) + 1
         await self._emit("finding", finding)
 
     async def add_error(self, module: str, error: str, severity: str = "error") -> None:
@@ -75,7 +135,9 @@ class ScanSession:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.errors.append(err_entry)
+        self.last_error = error
         await self._persist_session()
+        await self.save_runtime_state(last_error=error, status=self.status, current_phase=self.current_phase)
         await self._emit("error", err_entry)
 
     async def save_conversation(
@@ -85,7 +147,7 @@ class ScanSession:
         result: str,
     ) -> None:
         """Save a conversation to the database."""
-        if self._db:
+        if self._db and self.config.persist_conversations:
             await self._db.save_conversation(
                 self.id,
                 attack_module,
@@ -100,6 +162,41 @@ class ScanSession:
             entry["timestamp"] = datetime.now(timezone.utc).isoformat()
             await self._db.save_evolution_entry(self.id, entry)
         await self._emit("evolution", entry)
+
+    def record_phase(self, phase: str, **details: Any) -> None:
+        """Record phase transitions for replay and audits."""
+        self.current_phase = phase
+        self.phase_history.append({
+            "phase": phase,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "details": details,
+        })
+
+    def remember(self, key: str, value: Any) -> None:
+        """Track operator-relevant memory discovered during the scan."""
+        if key not in self.attack_memory:
+            self.attack_memory[key] = value
+            return
+        current = self.attack_memory[key]
+        if isinstance(current, list):
+            if isinstance(value, list):
+                for item in value:
+                    if item not in current:
+                        current.append(item)
+            elif value not in current:
+                current.append(value)
+        elif isinstance(current, dict) and isinstance(value, dict):
+            current.update(value)
+        else:
+            self.attack_memory[key] = value
+
+    def sync_profile_memory(self) -> None:
+        """Snapshot profile discoveries into scan memory."""
+        self.attack_memory["discovered_tools"] = [
+            tool.name for tool in getattr(self.profile, "detected_tools", []) or []
+        ]
+        self.attack_memory["guardrail_level"] = getattr(getattr(self.profile, "guardrails", None), "level", "")
+        self.attack_memory["rag_detected"] = bool(getattr(self.profile, "rag_detected", False))
 
     def on_event(self, listener: Callable[..., Any]) -> None:
         """Register an event listener for real-time updates (dashboard, CLI)."""
@@ -125,16 +222,66 @@ class ScanSession:
             "provider": self.config.target.provider,
             "mode": self.config.mode.value,
             "profile": self.profile.to_dict(),
-            "config": self.config.to_dict(),
+            "config": self.config.to_safe_dict(),
             "status": self.status,
             "started_at": self.started_at.isoformat(),
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "summary": self.summary,
         })
 
+    async def save_runtime_state(
+        self,
+        *,
+        status: str | None = None,
+        current_phase: str | None = None,
+        progress: dict[str, Any] | None = None,
+        stop_requested: bool | None = None,
+        resumable: bool = True,
+        last_error: str | None = None,
+    ) -> None:
+        """Persist live scan runtime state for crash-soft resume and UI recovery."""
+        if not self._db:
+            return
+        if status is not None:
+            self.status = status
+        if current_phase is not None:
+            self.current_phase = current_phase
+        if progress is not None:
+            self.last_progress = progress
+        if last_error:
+            self.last_error = last_error
+        await self._db.save_scan_runtime({
+            "session_id": self.id,
+            "db_path": self.config.session_db,
+            "target_url": self.config.target.url,
+            "provider": self.config.target.provider,
+            "model": self.config.target.model,
+            "status": self.status,
+            "current_phase": self.current_phase,
+            "progress": self.last_progress,
+            "config": self.config.to_safe_dict(),
+            "campaign": self.config.campaign.to_summary(),
+            "policy": {
+                "execution_mode": self.config.policy.execution_mode.value,
+                "aggression": self.config.policy.aggression,
+                "evidence_threshold": self.config.policy.evidence_threshold.value,
+                "dry_run": self.config.policy.dry_run,
+                "approval_required": self.config.policy.approval_required,
+                "retain_days": self.config.policy.retain_days,
+                "raw_evidence_mode": self.config.policy.raw_evidence_mode.value,
+            },
+            "last_error": self.last_error,
+            "stop_requested": bool(stop_requested),
+            "resumable": resumable,
+            "started_at": self.started_at.isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+
     @classmethod
     async def resume(cls, session_id: str, db_path: str = "./basilisk-sessions.db") -> ScanSession:
         """Resume an interrupted scan session from the database."""
+        from basilisk.core.config import BasiliskConfig
+
         db = BasiliskDatabase(db_path)
         await db.connect()
         session_data = await db.get_session(session_id)
@@ -142,10 +289,14 @@ class ScanSession:
             await db.close()
             raise ValueError(f"Session not found: {session_id}")
 
-        config = BasiliskConfig.from_cli_args(**session_data.get("config", {}))
+        config = BasiliskConfig.from_dict(session_data.get("config", {}))
         session = cls(config, session_id=session_id)
-        session._db = db
-        session.status = "resumed"
+        session.status = session_data.get("status", "resumed")
+        session.current_phase = session.status
+        if session_data.get("started_at"):
+            session.started_at = datetime.fromisoformat(session_data["started_at"])
+        if session_data.get("finished_at"):
+            session.finished_at = datetime.fromisoformat(session_data["finished_at"])
 
         if session_data.get("profile"):
             session.profile = BasiliskProfile.from_dict(session_data["profile"])
@@ -156,8 +307,21 @@ class ScanSession:
 
         if session_data.get("summary") and "errors" in session_data["summary"]:
             session.errors = session_data["summary"]["errors"]
+        if session_data.get("summary") and "attack_memory" in session_data["summary"]:
+            session.attack_memory = session_data["summary"]["attack_memory"]
+        if session_data.get("summary") and "phase_history" in session_data["summary"]:
+            session.phase_history = session_data["summary"]["phase_history"]
+        if session.phase_history:
+            session.current_phase = session.phase_history[-1].get("phase", session.current_phase)
+
+        await db.close()
 
         return session
+
+    def completed_modules(self) -> set[str]:
+        """Return the set of attack modules already completed in this session."""
+        completed = self.attack_memory.get("completed_modules", [])
+        return {str(item) for item in completed if item}
 
     @property
     def summary(self) -> dict[str, Any]:
@@ -170,6 +334,7 @@ class ScanSession:
             category_counts[cat] = category_counts.get(cat, 0) + 1
 
         return {
+            "schema_version": SCHEMA_VERSION_LABEL,
             "session_id": self.id,
             "target": self.config.target.url,
             "status": self.status,
@@ -182,6 +347,20 @@ class ScanSession:
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "model": self.profile.detected_model,
             "attack_surface_score": self.profile.attack_surface_score,
+            "campaign": self.config.campaign.to_summary(),
+            "policy": {
+                "execution_mode": self.config.policy.execution_mode.value,
+                "aggression": self.config.policy.aggression,
+                "evidence_threshold": self.config.policy.evidence_threshold.value,
+                "dry_run": self.config.policy.dry_run,
+                "approval_required": self.config.policy.approval_required,
+                "raw_evidence_mode": self.config.policy.raw_evidence_mode.value,
+                "retain_raw_findings": self.config.policy.retain_raw_findings,
+                "retain_conversations": self.config.policy.retain_conversations,
+                "retain_days": self.config.policy.retain_days,
+            },
+            "attack_memory": self.attack_memory,
+            "phase_history": self.phase_history,
         }
 
     @property

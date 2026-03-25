@@ -18,7 +18,13 @@ from basilisk import __version__
 from basilisk.core.session import ScanSession
 
 
-def generate_sarif(session: ScanSession, path: Path) -> None:
+def generate_sarif(
+    session: ScanSession,
+    path: Path,
+    *,
+    include_raw_content: bool = False,
+    include_conversations: bool = False,
+) -> None:
     """Generate a SARIF 2.1.0 compliant report."""
     rules: list[dict[str, Any]] = []
     results: list[dict[str, Any]] = []
@@ -26,6 +32,7 @@ def generate_sarif(session: ScanSession, path: Path) -> None:
 
     for finding in session.findings:
         rule_id = _to_rule_id(finding.attack_module)
+        finding_data = finding.to_dict()
 
         if rule_id not in seen_rules:
             seen_rules[rule_id] = len(seen_rules)
@@ -41,6 +48,9 @@ def generate_sarif(session: ScanSession, path: Path) -> None:
                 "properties": {
                     "category": finding.category.value,
                     "owasp_id": finding.category.owasp_id,
+                    "trust_tier": finding_data["module_trust_tier"],
+                    "success_criteria": finding_data["module_success_criteria"],
+                    "evidence_requirements": finding_data["module_evidence_requirements"],
                     "tags": ["security", "ai", "llm", finding.category.owasp_id],
                 },
             })
@@ -55,7 +65,7 @@ def generate_sarif(session: ScanSession, path: Path) -> None:
                     f"Severity: {finding.severity.value.upper()}\n"
                     f"Confidence: {finding.confidence:.0%}\n"
                     f"OWASP: {finding.category.owasp_id}\n\n"
-                    f"Payload:\n{_sanitize(finding.payload[:500])}"
+                    f"Payload:\n{_sanitize(finding.payload[:500] if include_raw_content else '[redacted in report output]')}"
                 ),
             },
             "properties": {
@@ -65,6 +75,11 @@ def generate_sarif(session: ScanSession, path: Path) -> None:
                 "attack_module": finding.attack_module,
                 "remediation": finding.remediation,
                 "evolution_generation": finding.evolution_generation,
+                "module_trust_tier": finding_data["module_trust_tier"],
+                "evidence_verdict": finding.evidence.verdict.value if finding.evidence else "unverified",
+                "evidence_confidence_basis": finding.evidence.confidence_basis if finding.evidence else "heuristic",
+                "policy_downgraded": finding_data["policy_downgraded"],
+                "missing_evidence_requirements": finding.metadata.get("missing_evidence_requirements", []),
             },
         }
 
@@ -74,7 +89,7 @@ def generate_sarif(session: ScanSession, path: Path) -> None:
         }
 
         # Partial results — if payload/response are in conversation
-        if finding.conversation:
+        if include_conversations and finding.conversation:
             result["codeFlows"] = [{
                 "message": {"text": "Attack conversation flow"},
                 "threadFlows": [{

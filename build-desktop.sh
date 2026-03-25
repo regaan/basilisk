@@ -70,6 +70,28 @@ cp LICENSE desktop/LICENSE.txt 2>/dev/null || echo "AGPL-3.0 License" > desktop/
 # Prepare icons
 mkdir -p desktop/build
 cp desktop/src/assets/logo.jpg desktop/build/icon.png 2>/dev/null || true
+if command -v magick >/dev/null 2>&1; then
+    magick desktop/src/assets/logo.jpg -resize 512x512 desktop/build/icon.png
+    magick desktop/src/assets/logo.jpg -resize 256x256 desktop/build/icon.ico
+fi
+if [ "$(uname -s)" = "Darwin" ]; then
+    mkdir -p desktop/build/icon.iconset
+    for size in 16 32 64 128 256 512; do
+        sips -z "$size" "$size" desktop/src/assets/logo.jpg --out "desktop/build/icon.iconset/icon_${size}x${size}.png" >/dev/null 2>&1 || true
+        if [ "$size" -lt 512 ]; then
+            double=$((size * 2))
+            sips -z "$double" "$double" desktop/src/assets/logo.jpg --out "desktop/build/icon.iconset/icon_${size}x${size}@2x.png" >/dev/null 2>&1 || true
+        fi
+    done
+    iconutil -c icns desktop/build/icon.iconset -o desktop/build/icon.icns >/dev/null 2>&1 || true
+fi
+
+PLATFORM_NAME="Linux"
+case "$(uname -s)" in
+    Darwin) PLATFORM_NAME="macOS" ;;
+    MINGW*|MSYS*|CYGWIN*) PLATFORM_NAME="Windows" ;;
+esac
+$PYTHON scripts/write_build_metadata.py --platform "$PLATFORM_NAME" --output desktop/build/release-channel.json
 
 # Step 5: Build Electron
 echo ""

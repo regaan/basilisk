@@ -16,6 +16,8 @@ package main
 import "C"
 
 import (
+	crand "crypto/rand"
+	"encoding/binary"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -34,7 +36,7 @@ import (
 // rngPool provides thread-safe, lock-free random number generators
 var rngPool = sync.Pool{
 	New: func() interface{} {
-		return rand.New(rand.NewSource(time.Now().UnixNano()))
+		return rand.New(rand.NewSource(secureSeed()))
 	},
 }
 
@@ -44,6 +46,14 @@ func getRNG() *rand.Rand {
 
 func putRNG(r *rand.Rand) {
 	rngPool.Put(r)
+}
+
+func secureSeed() int64 {
+	var seedBytes [8]byte
+	if _, err := crand.Read(seedBytes[:]); err == nil {
+		return int64(binary.LittleEndian.Uint64(seedBytes[:]))
+	}
+	return time.Now().UnixNano()
 }
 
 // Homoglyph mapping — Unicode confusables for ASCII characters

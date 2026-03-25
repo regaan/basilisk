@@ -172,6 +172,8 @@ class TestHTML:
         content = path.read_text()
         assert "System Prompt Extracted" in content
         assert "CRITICAL" in content
+        assert "PRODUCTION" in content
+        assert "Required Proof" in content
 
     def test_html_empty(self, tmp_path):
         from basilisk.report.html import generate_html
@@ -182,6 +184,21 @@ class TestHTML:
 
         content = path.read_text()
         assert "No vulnerabilities detected" in content
+
+    def test_html_autoescapes_content(self, tmp_path):
+        from basilisk.report.html import generate_html
+
+        findings = _sample_findings()
+        findings[0].title = "<script>alert(1)</script>"
+        findings[0].payload = "<b>payload</b>"
+        session = MockSession(findings=findings)
+        path = tmp_path / "escaped.html"
+        generate_html(session, path, include_raw_content=True)
+
+        content = path.read_text()
+        assert "<script>alert(1)</script>" not in content
+        assert "&lt;script&gt;alert(1)&lt;/script&gt;" in content
+        assert "&lt;b&gt;payload&lt;/b&gt;" in content
 
 
 # ── JSON ──
@@ -201,6 +218,8 @@ class TestJSON:
         assert data["basilisk_version"] == __version__
         assert len(data["findings"]) == 3
         assert data["session"]["total_findings"] == 3
+        assert data["retention"]["retain_days"] == session.config.policy.retain_days
+        assert data["retention"]["raw_evidence_mode"] == session.config.policy.raw_evidence_mode.value
 
 
 # ── Markdown ──
@@ -218,6 +237,9 @@ class TestMarkdown:
         assert "# 🐍 Basilisk Scan Report" in content
         assert "CRITICAL" in content
         assert "System Prompt Extracted" in content
+        assert "Retention:" in content
+        assert "Module Tier:" in content
+        assert "Required Proof:" in content
 
 
 # ── PDF ──
