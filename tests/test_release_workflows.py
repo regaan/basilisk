@@ -26,3 +26,9 @@ def test_release_workflow_dispatches_pypi_publication() -> None:
     assert "gh workflow run python-publish.yml" in workflow
     assert '--field release_tag="$RELEASE_TAG"' in workflow
     assert '--field signing_ref="$SIGNING_REF"' in workflow
+
+
+def test_linux_release_build_uses_compatible_glibc_baseline() -> None:
+    workflow = (ROOT / ".github/workflows/build.yml").read_text(encoding="utf-8")
+
+    assert "os: [ubuntu-22.04, windows-latest, macos-latest]" in workflow
