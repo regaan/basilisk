@@ -107,7 +107,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Keep Linux release binaries compatible with the oldest Ubuntu LTS in
+        # standard support. ubuntu-latest currently builds the PyInstaller
+        # sidecar against glibc 2.38, which prevents the AppImage from starting
+        # on older supported distributions.
+        os: [ubuntu-22.04, windows-latest, macos-latest]
 
     steps:
       - name: Checkout Code
